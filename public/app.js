@@ -2130,33 +2130,42 @@ function renderSupervisorsPanel() {
       const compLabel = s.companiaTexto || s.compania || "Fenix Multi-Compañía";
       return `
         <div class="sup-card ${isActive ? '' : 'is-inactive'}">
-          <div class="sup-card-top">
-            <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-              <div class="sup-avatar" style="${isActive ? '' : 'background:#e2e8f0; color:#64748b;'}">${esc(ini)}</div>
-              <div style="min-width:0;">
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                  <span style="font-weight:700; font-size:13.5px; color:${isActive ? '#0f172a' : '#64748b'};">${esc(s.nombre)}</span>
-                  <span class="sup-status-badge ${isActive ? 'sup-status-active' : 'sup-status-inactive'}">
-                    <span class="${isActive ? 'sup-dot-active' : 'sup-dot-inactive'}"></span> ${isActive ? 'Activo' : 'Inactivo'}
-                  </span>
-                </div>
-                <div class="sup-company-badge" title="Compañía asociada a este acceso">
-                  🏢 <b>Compañía:</b> ${esc(compLabel)}
-                </div>
-                <div style="font-size:11px; color:#64748b; margin-top:2px;">Solo lectura · Alias: ${esc(s.aliases)}</div>
+          <!-- 1. Encabezado: Avatar + Nombre + Estado -->
+          <div class="sup-card-header">
+            <div class="sup-card-identity">
+              <div class="sup-avatar ${isActive ? '' : 'avatar-inactive'}">${esc(ini)}</div>
+              <div class="sup-card-title-group">
+                <h4 class="sup-card-name">${esc(s.nombre)}</h4>
+                <span class="sup-status-badge ${isActive ? 'sup-status-active' : 'sup-status-inactive'}">
+                  <span class="${isActive ? 'sup-dot-active' : 'sup-dot-inactive'}"></span>
+                  ${isActive ? 'Activo' : 'Inactivo'}
+                </span>
               </div>
             </div>
-            <div style="display:flex; gap:5px; flex-shrink:0; align-items:center;">
-              ${isActive
-                ? `<button class="btn btn-outline btn-sm" onclick="window.app.toggleSupervisorStatus(${s.id}, false)" title="Desactivar temporalmente este acceso">Desactivar</button>`
-                : `<button class="btn btn-success btn-sm" onclick="window.app.toggleSupervisorStatus(${s.id}, true)" title="Reactivar acceso">Activar</button>`
-              }
-              <button class="btn btn-outline btn-sm" onclick="window.open('${relUrl}', '_blank')" title="Abrir portal del supervisor">Abrir ↗</button>
-              <button class="btn btn-primary btn-sm" onclick="window.app.copyLink('${relUrl}', 'Link de ${esc(s.nombre)} copiado')">Copiar Link</button>
-              <button class="btn btn-outline btn-sm" onclick="window.app.removeSupervisor(${s.id}, '${esc(s.nombre)}')" title="Eliminar supervisor">✕</button>
+          </div>
+
+          <!-- 2. Compañía Asociada -->
+          <div class="sup-card-company-box">
+            <div class="sup-company-badge" title="Compañía asociada a este acceso">
+              🏢 <b>Compañía:</b> <span>${esc(compLabel)}</span>
             </div>
           </div>
-          ${renderEmailChipsBox("sup", String(s.id), s.correos_autorizados || "", `Correo de ${s.nombre}...`)}
+
+          <!-- 3. Botones de Acción (Fila dedicada con espacio holgado) -->
+          <div class="sup-card-actions-bar">
+            ${isActive
+              ? `<button class="btn btn-outline btn-sm btn-sup-action" onclick="window.app.toggleSupervisorStatus(${s.id}, false)" title="Desactivar temporalmente este acceso">Desactivar</button>`
+              : `<button class="btn btn-success btn-sm btn-sup-action" onclick="window.app.toggleSupervisorStatus(${s.id}, true)" title="Reactivar acceso">Activar</button>`
+            }
+            <button class="btn btn-outline btn-sm btn-sup-action" onclick="window.open('${relUrl}', '_blank')" title="Abrir portal del supervisor">Abrir ↗</button>
+            <button class="btn btn-primary btn-sm btn-sup-action btn-sup-copy" onclick="window.app.copyLink('${relUrl}', 'Link de ${esc(s.nombre)} copiado')">Copiar Link</button>
+            <button class="btn btn-outline btn-sm btn-sup-del" onclick="window.app.removeSupervisor(${s.id}, '${esc(s.nombre)}')" title="Eliminar supervisor">✕</button>
+          </div>
+
+          <!-- 4. Permisos de Correo Electrónico -->
+          <div class="sup-card-emails-box">
+            ${renderEmailChipsBox("sup", String(s.id), s.correos_autorizados || "", `Correo de ${s.nombre}...`)}
+          </div>
         </div>
       `;
     })
@@ -2166,8 +2175,7 @@ function renderSupervisorsPanel() {
 async function addSupervisor() {
   const nombre = document.getElementById("newSupName").value.trim();
   const company = (document.getElementById("newSupCompany")?.value || "").trim();
-  const aliases = document.getElementById("newSupAliases").value.trim();
-  const correos = document.getElementById("newSupEmails").value.trim();
+  const correos = (document.getElementById("newSupEmails")?.value || "").trim();
   if (!nombre) return toast("Escribe el nombre del supervisor");
 
   await api("/api/supervisors", {
@@ -2175,14 +2183,13 @@ async function addSupervisor() {
     body: JSON.stringify({
       nombre,
       compania: company,
-      aliases: aliases || nombre,
+      aliases: nombre,
       correos_autorizados: correos,
     }),
   });
   document.getElementById("newSupName").value = "";
   if (document.getElementById("newSupCompany")) document.getElementById("newSupCompany").value = "";
-  document.getElementById("newSupAliases").value = "";
-  document.getElementById("newSupEmails").value = "";
+  if (document.getElementById("newSupEmails")) document.getElementById("newSupEmails").value = "";
   toast(`Supervisor "${nombre}" agregado`);
   await loadBootstrap();
 }
