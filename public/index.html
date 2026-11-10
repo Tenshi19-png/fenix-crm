@@ -50,8 +50,10 @@
     <div class="brand" onclick="window.app.onBrandClick()">
       <div class="brand-logo">F</div>
       <div>
-        <div class="brand-title">
-          Fenix <span id="roleBadge" class="role-badge">Principal</span>
+        <div class="brand-title" id="brandTitle">
+          <span id="brandNameText">Fenix</span>
+          <span id="brandCompanyText" class="brand-company-text hidden"></span>
+          <span id="roleBadge" class="role-badge">Principal</span>
         </div>
         <div class="brand-sub" id="liveStatus">
           <span class="dot-live"></span> En línea
@@ -531,9 +533,21 @@
 
       <div class="add-sup-bar">
         <input type="text" id="newSupName" placeholder="Nombre del nuevo supervisor..." />
+        <input type="text" id="newSupCompany" placeholder="Compañía (ej. Ventas Entel, Movistar)..." />
         <input type="text" id="newSupAliases" placeholder="Alias opcionales separados por coma..." />
         <input type="text" id="newSupEmails" placeholder="Correo(s) autorizado(s) separados por coma..." />
         <button class="btn btn-primary" onclick="window.app.addSupervisor()">Agregar Supervisor</button>
+      </div>
+
+      <div class="sup-toolbar-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin:16px 0 14px;">
+        <div class="sup-filter-pills" id="supFilterPills">
+          <button type="button" class="sup-filter-btn active" data-filter="todos" onclick="window.app.filterSupervisors('todos')">Todos <span id="countSupsAll" class="count-pill">0</span></button>
+          <button type="button" class="sup-filter-btn" data-filter="activos" onclick="window.app.filterSupervisors('activos')">● Activos <span id="countSupsActive" class="count-pill">0</span></button>
+          <button type="button" class="sup-filter-btn" data-filter="inactivos" onclick="window.app.filterSupervisors('inactivos')">○ Inactivos <span id="countSupsInactive" class="count-pill">0</span></button>
+        </div>
+        <div style="flex:1; max-width:320px; min-width:200px;">
+          <input type="text" id="supSearchInput" placeholder="🔍 Filtrar supervisor o compañía..." oninput="window.app.onSupervisorSearch(this.value)" style="width:100%; padding:6px 12px; font-size:12.5px; border-radius:6px; border:1px solid #cbd5e1; background:#fff;" />
+        </div>
       </div>
 
       <div id="supervisorsGrid" class="supervisors-grid"></div>

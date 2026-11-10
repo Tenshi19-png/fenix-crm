@@ -214,6 +214,9 @@ function initSchema() {
   try {
     db.exec("ALTER TABLE supervisors ADD COLUMN correos_autorizados TEXT NOT NULL DEFAULT '';");
   } catch {}
+  try {
+    db.exec("ALTER TABLE supervisors ADD COLUMN compania TEXT NOT NULL DEFAULT '';");
+  } catch {}
 
   const insViewPerm = db.prepare(
     "INSERT OR IGNORE INTO view_permissions (vista_key, nombre, correos_autorizados) VALUES (?, ?, ?)"
@@ -530,6 +533,7 @@ function getAllSupervisors() {
     .map((s) => ({
       ...s,
       activo: !!s.activo,
+      compania: s.compania || "",
       aliasesList: String(s.aliases || s.nombre)
         .split(",")
         .map((a) => a.trim())
@@ -1823,17 +1827,27 @@ function upsertSupervisor(payload) {
     payload.correos_autorizados !== undefined
       ? normalizeEmailListString(payload.correos_autorizados)
       : null;
+  const compania = payload.compania !== undefined ? String(payload.compania || "").trim() : null;
 
   if (payload.id) {
-    if (correos !== null) {
+    const act = payload.activo === false ? 0 : 1;
+    if (correos !== null && compania !== null) {
+      db.prepare(
+        "UPDATE supervisors SET nombre = ?, aliases = ?, correos_autorizados = ?, compania = ?, activo = ? WHERE id = ?"
+      ).run(nombre, aliases, correos, compania, act, Number(payload.id));
+    } else if (correos !== null) {
       db.prepare(
         "UPDATE supervisors SET nombre = ?, aliases = ?, correos_autorizados = ?, activo = ? WHERE id = ?"
-      ).run(nombre, aliases, correos, payload.activo === false ? 0 : 1, Number(payload.id));
+      ).run(nombre, aliases, correos, act, Number(payload.id));
+    } else if (compania !== null) {
+      db.prepare(
+        "UPDATE supervisors SET nombre = ?, aliases = ?, compania = ?, activo = ? WHERE id = ?"
+      ).run(nombre, aliases, compania, act, Number(payload.id));
     } else {
       db.prepare("UPDATE supervisors SET nombre = ?, aliases = ?, activo = ? WHERE id = ?").run(
         nombre,
         aliases,
-        payload.activo === false ? 0 : 1,
+        act,
         Number(payload.id)
       );
     }
@@ -1842,14 +1856,16 @@ function upsertSupervisor(payload) {
 
   const existing = db.prepare("SELECT * FROM supervisors WHERE lower(nombre) = lower(?)").get(nombre);
   if (existing) {
+    const compVal = compania !== null ? compania : (existing.compania || "");
     if (correos !== null) {
-      db.prepare("UPDATE supervisors SET aliases = ?, correos_autorizados = ?, activo = 1 WHERE id = ?").run(
+      db.prepare("UPDATE supervisors SET aliases = ?, correos_autorizados = ?, compania = ?, activo = 1 WHERE id = ?").run(
         aliases,
         correos,
+        compVal,
         existing.id
       );
     } else {
-      db.prepare("UPDATE supervisors SET aliases = ?, activo = 1 WHERE id = ?").run(aliases, existing.id);
+      db.prepare("UPDATE supervisors SET aliases = ?, compania = ?, activo = 1 WHERE id = ?").run(aliases, compVal, existing.id);
     }
     return db.prepare("SELECT * FROM supervisors WHERE id = ?").get(existing.id);
   }
@@ -1857,9 +1873,9 @@ function upsertSupervisor(payload) {
   const token = slugify(nombre) + "-" + crypto.randomBytes(3).toString("hex");
   const info = db
     .prepare(
-      "INSERT INTO supervisors (nombre, aliases, token_acceso, correos_autorizados, activo) VALUES (?, ?, ?, ?, 1)"
+      "INSERT INTO supervisors (nombre, aliases, token_acceso, correos_autorizados, activo, compania) VALUES (?, ?, ?, ?, 1, ?)"
     )
-    .run(nombre, aliases, token, correos || "");
+    .run(nombre, aliases, token, correos || "", compania || "");
   return db.prepare("SELECT * FROM supervisors WHERE id = ?").get(info.lastInsertRowid);
 }
 
@@ -2016,7 +2032,18 @@ function verifyViewEmailAccess(vista, supParam = "", emailInput = "", isAdminPre
       (s) => s.token_acceso === supParam || normalizarTexto(s.nombre) === normalizarTexto(supParam)
     );
     const supName = found ? found.nombre : supParam || "Supervisor";
-    const viewTitle = `👤 Hoja Supervisor: ${supName}`;
+    const compLabel = found?.compania ? ` · ${found.compania}` : "";
+    const viewTitle = `👤 Hoja Supervisor: ${supName}${compLabel}`;
+
+    if (found && !found.activo) {
+      return {
+        allowed: false,
+        requiresEmail: true,
+        viewTitle: `⛔ Acceso Inactivo: ${supName}`,
+        reason: `El acceso para el supervisor "${supName}" se encuentra temporalmente inactivo. Contacta al Administrador de Fenix CRM para reactivarlo.`,
+      };
+    }
+
     const supEmails = found ? parseEmailList(found.correos_autorizados) : [];
     const allowedList = [...new Set([...supEmails, ...adminEmails])];
 
@@ -2325,7 +2352,8 @@ function buildBrandGroupsForForm(companies) {
 
 function getFormMetadata(options = {}) {
   const companies = getAllCompanies();
-  const supervisors = getAllSupervisors().filter((s) => s.activo);
+  const allSups = getAllSupervisors();
+  const supervisors = options.includeAllSupervisors ? allSups : allSups.filter((s) => s.activo);
 
   const execRows = db
     .prepare(
@@ -2333,7 +2361,7 @@ function getFormMetadata(options = {}) {
     )
     .all();
 
-  const supsCache = getAllSupervisors();
+  const supsCache = allSups;
   const ejecutivosPorSupervisor = {};
   const todosEjecutivos = new Set();
 
@@ -2352,16 +2380,34 @@ function getFormMetadata(options = {}) {
 
   const countsRows = db.prepare("SELECT company_slug, supervisor, COUNT(*) as total FROM sales GROUP BY company_slug, supervisor").all();
   const countsMap = {};
+  const compMap = new Map(companies.map((c) => [c.slug, c.nombre]));
+  const supsCompMap = {};
+  for (const s of allSups) supsCompMap[s.nombre] = new Set();
+
   for (const row of countsRows) {
     if (!options.supervisor || supervisorMatchesFilter(row.supervisor, options.supervisor, supsCache)) {
       countsMap[row.company_slug] = (countsMap[row.company_slug] || 0) + row.total;
     }
+    const cName = compMap.get(row.company_slug);
+    if (cName) {
+      const canon = resolveCanonicalSupervisor(row.supervisor, supsCache);
+      if (supsCompMap[canon]) supsCompMap[canon].add(cName);
+    }
   }
+
+  const enrichedSupervisors = supervisors.map((s) => {
+    const detectedComps = Array.from(supsCompMap[s.nombre] || []);
+    return {
+      ...s,
+      companias: detectedComps,
+      companiaTexto: s.compania || (detectedComps.length > 0 ? detectedComps.join(", ") : "Fenix Multi-Compañía"),
+    };
+  });
 
   return {
     brandGroups,
     companies: companies.map((c) => ({ ...c, totalVentas: countsMap[c.slug] || 0 })),
-    supervisors,
+    supervisors: enrichedSupervisors,
     ejecutivosPorSupervisor,
     todosEjecutivos: Array.from(todosEjecutivos).sort(),
   };

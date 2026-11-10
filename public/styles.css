@@ -921,33 +921,32 @@ textarea:focus {
   background-color: #f1f5f9;
 }
 
-/* Tintes suaves y limpios según Estado */
+/* Tintes suaves y limpios según Estado (descansados para la vista) */
 tr.row-status-instalado td,
 tr.row-status-portado td {
-  background-color: #f0fdf4;
+  background-color: #ebf7ee !important;
+  color: #153e26;
 }
 tr.row-status-instalado:hover td,
 tr.row-status-portado:hover td {
-  background-color: #dcfce7 !important;
+  background-color: #d8f1e0 !important;
 }
 
 tr.row-status-pendiente td {
-  background-color: #fefce8;
+  background-color: #ffffff;
 }
 tr.row-status-pendiente:hover td {
-  background-color: #fef9c3 !important;
+  background-color: #f8fafc !important;
 }
 
-tr.row-status-cancelado td {
-  background-color: #fef2f2;
-}
-tr.row-status-cancelado:hover td {
-  background-color: #fee2e2 !important;
-}
-
+tr.row-status-cancelado td,
 tr.row-status-norealizado td {
-  background-color: #f8fafc;
-  color: #64748b;
+  background-color: #fdf0f0 !important;
+  color: #4a1518;
+}
+tr.row-status-cancelado:hover td,
+tr.row-status-norealizado:hover td {
+  background-color: #fcdede !important;
 }
 
 /* Separador mensual minimalista */
@@ -1780,4 +1779,125 @@ tr.month-separator-row:hover td {
 .grid-wrapper::-webkit-scrollbar-thumb:hover { background: #334155; }
 .grid-wrapper { scrollbar-width: auto; scrollbar-color: #64748b #e2e8f0; }
 .status-select { font-size: 11px; }
+
+/* ============================================================
+   BRANDING CON COMPAÑÍA & TARJETAS DE SUPERVISORES ACTIVOS/INACTIVOS
+   ============================================================ */
+.brand-company-text {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 13.5px;
+  color: #0d6350;
+  margin-left: 3px;
+  letter-spacing: -0.2px;
+}
+
+.brand-company-text.hidden {
+  display: none !important;
+}
+
+.sup-card.is-inactive {
+  opacity: 0.72;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.sup-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.2px;
+}
+
+.sup-status-active {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.sup-status-inactive {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.sup-dot-active {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #16a34a;
+}
+
+.sup-dot-inactive {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.sup-company-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #0e6553;
+  background: #eaf6f1;
+  border: 1px solid #c8e6dc;
+  padding: 2px 8px;
+  border-radius: 6px;
+  max-width: 100%;
+}
+
+.sup-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sup-filter-btn {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.sup-filter-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.sup-filter-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.sup-filter-btn .count-pill {
+  background: rgba(0,0,0,0.08);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10.5px;
+}
+
+.sup-filter-btn.active .count-pill {
+  background: rgba(255,255,255,0.25);
+  color: #fff;
+}
+
 

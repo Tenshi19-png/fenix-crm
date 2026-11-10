@@ -23,6 +23,8 @@ const state = {
   supervisorFiltro: "",
   userEmail: localStorage.getItem("fenix_auth_email") || "",
   activeTab: "hojas",
+  supFilterMode: "todos",
+  supSearchQuery: "",
   meta: null,
   activeCompanySlug: "",
   collapsedMonths: new Set(),
@@ -510,6 +512,52 @@ function applyRoleVisibility() {
     btnToggleGoals.classList.remove("hidden");
     permHint.classList.add("hidden");
   }
+
+  updateHeaderBrand();
+}
+
+function updateHeaderBrand() {
+  const brandComp = document.getElementById("brandCompanyText");
+  const roleBadge = document.getElementById("roleBadge");
+
+  const comp = (state.meta?.companiesVisibles || state.meta?.companies || []).find((c) => c.slug === state.activeCompanySlug);
+  const compName = comp ? (comp.nombre || comp.hoja) : "";
+
+  if (state.vista === "supervisor") {
+    if (brandComp) {
+      brandComp.textContent = compName ? `· ${compName}` : "";
+      brandComp.classList.toggle("hidden", !compName);
+    }
+    if (roleBadge) {
+      roleBadge.textContent = `Supervisor · ${state.supervisorFiltro || ""}`;
+    }
+    document.title = compName
+      ? `${compName} — Fenix CRM (${state.supervisorFiltro})`
+      : `Supervisor ${state.supervisorFiltro} — Fenix CRM`;
+  } else if (state.vista === "subadmin") {
+    if (brandComp) {
+      brandComp.textContent = compName ? `· ${compName}` : "";
+      brandComp.classList.toggle("hidden", !compName);
+    }
+    if (roleBadge) roleBadge.textContent = "Ventas Fenix";
+    document.title = compName ? `${compName} — Ventas Fenix` : "Ventas Fenix — CRM";
+  } else if (state.vista === "moviles") {
+    if (brandComp) {
+      brandComp.textContent = "· Móviles";
+      brandComp.classList.remove("hidden");
+    }
+    if (roleBadge) roleBadge.textContent = "Espejo Móviles";
+    document.title = "Espejo Móviles — Fenix CRM";
+  } else if (state.vista === "formulario") {
+    if (brandComp) brandComp.classList.add("hidden");
+    if (roleBadge) roleBadge.textContent = "Formulario de Ventas";
+    document.title = "Formulario de Ventas — Fenix CRM";
+  } else {
+    // Admin Principal
+    if (brandComp) brandComp.classList.add("hidden");
+    if (roleBadge) roleBadge.textContent = "Principal";
+    document.title = "Fenix CRM — Gestión de Ventas";
+  }
 }
 
 function renderViewSwitcher() {
@@ -532,7 +580,9 @@ function renderViewSwitcher() {
     <optgroup label="Supervisores (Solo Lectura)">
   `;
   for (const s of state.meta.supervisors || []) {
-    html += `<option value="sup:${esc(s.nombre)}">${esc(s.nombre)}</option>`;
+    const compNote = s.companiaTexto ? ` (${s.companiaTexto})` : "";
+    const actNote = s.activo === false ? " [Inactivo]" : "";
+    html += `<option value="sup:${esc(s.nombre)}">${esc(s.nombre)}${esc(compNote)}${actNote}</option>`;
   }
   html += `</optgroup>`;
   sel.innerHTML = html;
@@ -1108,6 +1158,7 @@ function selectCompanyTab(slug) {
       btn.classList.toggle("active", btn.dataset.slug === slug);
     });
   }
+  updateHeaderBrand();
   loadActiveSheet();
 }
 
@@ -1121,12 +1172,14 @@ function changeSheetPage(delta) {
   const maxPage = state.totalPages || 1;
   const target = (state.sheetPage || 1) + delta;
   state.sheetPage = Math.min(maxPage, Math.max(1, target));
+  updateHeaderBrand();
   loadActiveSheet();
 }
 
 function onPageSizeChange(val) {
   state.sheetPageSize = Number(val) || 150;
   state.sheetPage = 1;
+  updateHeaderBrand();
   loadActiveSheet();
 }
 
@@ -1260,8 +1313,8 @@ function renderSheetTable(data) {
     let rowClass = "data-row";
     if (estLow.includes("instalad")) rowClass += " row-status-instalado";
     else if (estLow.includes("portad")) rowClass += " row-status-portado";
-    else if (estLow.includes("cancel")) rowClass += " row-status-cancelado";
-    else if (estLow.includes("no realiz")) rowClass += " row-status-norealizado";
+    else if (estLow.includes("cancel") || estLow.includes("rechaz") || estLow.includes("anulad")) rowClass += " row-status-cancelado";
+    else if (estLow.includes("no realiz") || estLow.includes("no-realiz")) rowClass += " row-status-norealizado";
     else if (estLow.includes("pendi")) rowClass += " row-status-pendiente";
 
     html += `<tr class="${rowClass}" data-id="${row.id}">`;
@@ -1330,6 +1383,7 @@ window.addEventListener('resize', () => fitGridHeight());
 function toggleMonthGroup(mesClave) {
   if (state.collapsedMonths.has(mesClave)) state.collapsedMonths.delete(mesClave);
   else state.collapsedMonths.add(mesClave);
+  updateHeaderBrand();
   loadActiveSheet();
 }
 
@@ -1345,14 +1399,18 @@ async function changeRowStatus(id, newStatus, selectEl) {
     const low = newStatus.toLowerCase();
     if (low.includes("instalad")) tr.classList.add("row-status-instalado");
     else if (low.includes("portad")) tr.classList.add("row-status-portado");
-    else if (low.includes("cancel")) tr.classList.add("row-status-cancelado");
-    else if (low.includes("no realiz")) tr.classList.add("row-status-norealizado");
+    else if (low.includes("cancel") || low.includes("rechaz") || low.includes("anulad")) tr.classList.add("row-status-cancelado");
+    else if (low.includes("no realiz") || low.includes("no-realiz")) tr.classList.add("row-status-norealizado");
     else tr.classList.add("row-status-pendiente");
+
+    const sale = state.currentSheetSalesMap?.get(id) || (state.sales || []).find((s) => s.id === id);
+    if (sale) sale.estado = newStatus;
 
     toast(`Estado cambiado a "${newStatus}"`);
   } catch (err) {
     toast("Error: " + err.message);
-    loadActiveSheet();
+    updateHeaderBrand();
+  loadActiveSheet();
   }
 }
 
@@ -1418,6 +1476,7 @@ async function addManualRow() {
     }),
   });
   toast("Fila agregada");
+  updateHeaderBrand();
   loadActiveSheet();
 }
 
@@ -1426,6 +1485,7 @@ async function confirmDeleteRow(id) {
   if (!confirm("¿Eliminar esta venta de la maestra, Ventas Fenix y su supervisor? Se guardará un respaldo antes del cambio.")) return;
   await api(`/api/sales/${id}`, { method: "DELETE" });
   toast("Registro eliminado");
+  updateHeaderBrand();
   loadActiveSheet();
   loadBootstrap();
 }
@@ -1473,6 +1533,7 @@ async function confirmBulkDeleteRows() {
   state.selectedRowIds.clear();
   updateBulkDeleteUI();
   toast(`${ids.length} registro(s) eliminado(s)`);
+  updateHeaderBrand();
   loadActiveSheet();
   loadBootstrap();
 }
@@ -2004,30 +2065,79 @@ function renderSupervisorsPanel() {
     `;
   }
 
+  const allSupervisors = state.meta.supervisors || [];
+  const totalCount = allSupervisors.length;
+  const activeCount = allSupervisors.filter((s) => s.activo !== false).length;
+  const inactiveCount = totalCount - activeCount;
+
+  const countAllEl = document.getElementById("countSupsAll");
+  const countActEl = document.getElementById("countSupsActive");
+  const countInactEl = document.getElementById("countSupsInactive");
+  if (countAllEl) countAllEl.textContent = String(totalCount);
+  if (countActEl) countActEl.textContent = String(activeCount);
+  if (countInactEl) countInactEl.textContent = String(inactiveCount);
+
+  const filterMode = state.supFilterMode || "todos";
+  const searchQ = (state.supSearchQuery || "").toLowerCase().trim();
+
+  const filteredSups = allSupervisors.filter((s) => {
+    const isActive = s.activo !== false;
+    if (filterMode === "activos" && !isActive) return false;
+    if (filterMode === "inactivos" && isActive) return false;
+    if (searchQ) {
+      const matchName = String(s.nombre || "").toLowerCase().includes(searchQ);
+      const matchComp = String(s.companiaTexto || s.compania || "").toLowerCase().includes(searchQ);
+      const matchAliases = String(s.aliases || "").toLowerCase().includes(searchQ);
+      const matchEmails = String(s.correos_autorizados || "").toLowerCase().includes(searchQ);
+      if (!matchName && !matchComp && !matchAliases && !matchEmails) return false;
+    }
+    return true;
+  });
+
   const grid = document.getElementById("supervisorsGrid");
   if (!grid) return;
-  grid.innerHTML = (state.meta.supervisors || [])
+
+  if (filteredSups.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; padding: 28px; text-align: center; color: #64748b; background: #fff; border: 1px dashed #cbd5e1; border-radius: 10px;">
+        No se encontraron supervisores ${filterMode === "activos" ? "activos" : filterMode === "inactivos" ? "inactivos" : ""} con el filtro actual.
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = filteredSups
     .map((s) => {
       const relUrl = `/?vista=supervisor&sup=${encodeURIComponent(s.token_acceso)}`;
       const ini = s.nombre.charAt(0).toUpperCase();
+      const isActive = s.activo !== false;
+      const compLabel = s.companiaTexto || s.compania || "Fenix Multi-Compañía";
       return `
-        <div class="sup-card">
+        <div class="sup-card ${isActive ? '' : 'is-inactive'}">
           <div class="sup-card-top">
             <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-              <div class="sup-avatar">${esc(ini)}</div>
+              <div class="sup-avatar" style="${isActive ? '' : 'background:#e2e8f0; color:#64748b;'}">${esc(ini)}</div>
               <div style="min-width:0;">
-                <div style="font-weight:700; font-size:13.5px;">${esc(s.nombre)}</div>
-                <div style="font-size:11px; color:#64748b;">Solo lectura · Alias: ${esc(s.aliases)}</div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span style="font-weight:700; font-size:13.5px; color:${isActive ? '#0f172a' : '#64748b'};">${esc(s.nombre)}</span>
+                  <span class="sup-status-badge ${isActive ? 'sup-status-active' : 'sup-status-inactive'}">
+                    <span class="${isActive ? 'sup-dot-active' : 'sup-dot-inactive'}"></span> ${isActive ? 'Activo' : 'Inactivo'}
+                  </span>
+                </div>
+                <div class="sup-company-badge" title="Compañía asociada a este acceso">
+                  🏢 <b>Compañía:</b> ${esc(compLabel)}
+                </div>
+                <div style="font-size:11px; color:#64748b; margin-top:2px;">Solo lectura · Alias: ${esc(s.aliases)}</div>
               </div>
             </div>
-            <div style="display:flex; gap:5px; flex-shrink:0;">
-              <button class="btn btn-outline btn-sm" onclick="window.open('${relUrl}', '_blank')">Abrir</button>
-              <button class="btn btn-primary btn-sm" onclick="window.app.copyLink('${relUrl}', 'Link de ${esc(
-        s.nombre
-      )} copiado')">Copiar Link</button>
-              <button class="btn btn-outline btn-sm" onclick="window.app.removeSupervisor(${s.id}, '${esc(
-        s.nombre
-      )}')" title="Eliminar supervisor">✕</button>
+            <div style="display:flex; gap:5px; flex-shrink:0; align-items:center;">
+              ${isActive
+                ? `<button class="btn btn-outline btn-sm" onclick="window.app.toggleSupervisorStatus(${s.id}, false)" title="Desactivar temporalmente este acceso">Desactivar</button>`
+                : `<button class="btn btn-success btn-sm" onclick="window.app.toggleSupervisorStatus(${s.id}, true)" title="Reactivar acceso">Activar</button>`
+              }
+              <button class="btn btn-outline btn-sm" onclick="window.open('${relUrl}', '_blank')" title="Abrir portal del supervisor">Abrir ↗</button>
+              <button class="btn btn-primary btn-sm" onclick="window.app.copyLink('${relUrl}', 'Link de ${esc(s.nombre)} copiado')">Copiar Link</button>
+              <button class="btn btn-outline btn-sm" onclick="window.app.removeSupervisor(${s.id}, '${esc(s.nombre)}')" title="Eliminar supervisor">✕</button>
             </div>
           </div>
           ${renderEmailChipsBox("sup", String(s.id), s.correos_autorizados || "", `Correo de ${s.nombre}...`)}
@@ -2039,6 +2149,7 @@ function renderSupervisorsPanel() {
 
 async function addSupervisor() {
   const nombre = document.getElementById("newSupName").value.trim();
+  const company = (document.getElementById("newSupCompany")?.value || "").trim();
   const aliases = document.getElementById("newSupAliases").value.trim();
   const correos = document.getElementById("newSupEmails").value.trim();
   if (!nombre) return toast("Escribe el nombre del supervisor");
@@ -2047,15 +2158,46 @@ async function addSupervisor() {
     method: "POST",
     body: JSON.stringify({
       nombre,
+      compania: company,
       aliases: aliases || nombre,
       correos_autorizados: correos,
     }),
   });
   document.getElementById("newSupName").value = "";
+  if (document.getElementById("newSupCompany")) document.getElementById("newSupCompany").value = "";
   document.getElementById("newSupAliases").value = "";
   document.getElementById("newSupEmails").value = "";
   toast(`Supervisor "${nombre}" agregado`);
   await loadBootstrap();
+}
+
+async function toggleSupervisorStatus(id, newActivo) {
+  try {
+    await api(`/api/supervisors/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ activo: newActivo }),
+    });
+    toast(newActivo ? "Supervisor activado" : "Supervisor desactivado");
+    await loadBootstrap();
+  } catch (err) {
+    toast("Error: " + err.message);
+  }
+}
+
+function filterSupervisors(mode) {
+  state.supFilterMode = mode;
+  const bar = document.getElementById("supFilterPills");
+  if (bar) {
+    bar.querySelectorAll(".sup-filter-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.filter === mode);
+    });
+  }
+  renderSupervisorsPanel();
+}
+
+function onSupervisorSearch(q) {
+  state.supSearchQuery = q;
+  renderSupervisorsPanel();
 }
 
 async function removeSupervisor(id, nombre) {
@@ -2311,6 +2453,9 @@ window.app = {
   removeAuthorizedEmail,
   addSupervisor,
   removeSupervisor,
+  toggleSupervisorStatus,
+  filterSupervisors,
+  onSupervisorSearch,
   copyLink,
   copyFormLink,
   copyApiEndpoint,

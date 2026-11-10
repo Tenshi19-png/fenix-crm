@@ -337,7 +337,10 @@ const server = http.createServer(async (req, res) => {
 
       // Verificar permiso de correo para la vista solicitada
 
-      const meta = getFormMetadata({ supervisor: vista === "supervisor" ? supParam : "" });
+      const meta = getFormMetadata({
+        supervisor: vista === "supervisor" ? supParam : "",
+        includeAllSupervisors: vista === "admin",
+      });
       if (vista === "supervisor" && session?.role === "supervisor") {
         meta.supervisors = meta.supervisors.filter(s => s.token_acceso === supParam || s.nombre === supParam);
         meta.ejecutivosPorSupervisor = {}; meta.todosEjecutivos = [];
@@ -665,6 +668,22 @@ const server = http.createServer(async (req, res) => {
       deleteSupervisor(Number(matchSupDel[1]));
       broadcastEvent("config_updated", { kind: "supervisors" });
       return sendJson(res, 200, { ok: true });
+    }
+
+    const matchSupPatch = pathname.match(/^\/api\/supervisors\/(\d+)$/);
+    if (method === "PATCH" && matchSupPatch) {
+      if (role !== "admin") return sendJson(res, 403, { ok: false, message: "No autorizado." });
+      const body = await readJsonBody(req);
+      const id = Number(matchSupPatch[1]);
+      if (body.activo !== undefined) {
+        db.prepare("UPDATE supervisors SET activo = ? WHERE id = ?").run(body.activo ? 1 : 0, id);
+      }
+      if (body.compania !== undefined) {
+        db.prepare("UPDATE supervisors SET compania = ? WHERE id = ?").run(String(body.compania || "").trim(), id);
+      }
+      broadcastEvent("config_updated", { kind: "supervisors" });
+      const updated = db.prepare("SELECT * FROM supervisors WHERE id = ?").get(id);
+      return sendJson(res, 200, { ok: true, supervisor: updated });
     }
 
     // 12. Buscador Global
