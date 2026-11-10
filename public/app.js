@@ -273,6 +273,19 @@ function showEmailGate(access = {}) {
     emailInput.value = state.userEmail;
   }
 
+  const passWrap = document.getElementById("gatePasswordWrap");
+  const passInput = document.getElementById("gatePassword");
+  if (state.vista === "admin") {
+    if (passWrap) passWrap.style.display = "block";
+    if (passInput) passInput.required = true;
+  } else {
+    if (passWrap) passWrap.style.display = "none";
+    if (passInput) {
+      passInput.required = false;
+      passInput.value = "";
+    }
+  }
+
   const errBanner = document.getElementById("gateErrorBanner");
   if (state.userEmail && access.reason) {
     errBanner.textContent = access.reason;
@@ -303,6 +316,8 @@ async function submitEmailGate(ev) {
   errBanner.classList.add("hidden");
 
   try {
+    const passInput = document.getElementById("gatePassword");
+    const password = passInput ? passInput.value : "";
     const res = await fetch(apiUrl("/api/auth/verify-email"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -310,13 +325,14 @@ async function submitEmailGate(ev) {
         vista: state.vista,
         sup: state.supervisorFiltro,
         email,
-        password: document.getElementById("gatePassword").value,
+        password,
       }),
     });
     const data = await res.json();
     if (data.allowed) {
+      localStorage.setItem("fenix_session", data.token);
       sessionStorage.setItem("fenix_session", data.token);
-      document.getElementById("gatePassword").value = "";
+      if (passInput) passInput.value = "";
       state.userEmail = email;
       localStorage.setItem("fenix_auth_email", email);
       hideEmailGate();
@@ -339,6 +355,7 @@ async function submitEmailGate(ev) {
 
 async function logoutEmailSession() {
   await fetch(apiUrl('/api/auth/logout'), { method: 'POST', headers: requestHeaders() });
+  localStorage.removeItem('fenix_session');
   sessionStorage.removeItem('fenix_session');
   state.eventSource?.close();
   state.userEmail = "";
@@ -555,7 +572,7 @@ function renderViewSwitcher() {
 function setupSSE() {
   state.eventSource?.close();
   if (!state.meta || state.meta.requiresEmailGate || state.vista === 'formulario') return;
-  const token = sessionStorage.getItem('fenix_session') || '';
+  const token = localStorage.getItem('fenix_session') || sessionStorage.getItem('fenix_session') || '';
   const evtSource = new EventSource(apiUrl('/api/events?session=' + encodeURIComponent(token)));
   state.eventSource = evtSource;
   const statusEl = document.getElementById('liveStatus');

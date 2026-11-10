@@ -30,8 +30,10 @@
           required
           autocomplete="email"
         />
-        <label class="field-label" for="gatePassword" style="margin-top:12px">Clave de acceso</label>
-        <input id="gatePassword" type="password" required autocomplete="current-password" placeholder="Tu clave personal" />
+        <div id="gatePasswordWrap">
+          <label class="field-label" for="gatePassword" style="margin-top:12px">Clave de administrador</label>
+          <input id="gatePassword" type="password" autocomplete="current-password" placeholder="Tu clave de administrador" />
+        </div>
         <div id="gateErrorBanner" class="alert-banner alert-error hidden" style="margin-top:10px;"></div>
         <button type="submit" class="btn btn-primary btn-lg" id="btnGateSubmit" style="width:100%; margin-top:14px;">
           Ingresar a la Hoja

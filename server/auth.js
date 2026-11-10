@@ -4,7 +4,11 @@ const { db, verifyViewEmailAccess, getAllSupervisors } = require('./db');
 db.exec(`CREATE TABLE IF NOT EXISTS access_credentials (
   email TEXT PRIMARY KEY, salt TEXT NOT NULL, hash TEXT NOT NULL
 );`);
-const sessions = new Map();
+
+db.exec(`CREATE TABLE IF NOT EXISTS active_sessions (
+  token TEXT PRIMARY KEY, email TEXT NOT NULL, role TEXT NOT NULL, sup TEXT, expires INTEGER NOT NULL
+);`);
+
 const attempts = new Map();
 const normalize = value => String(value || '').trim().toLowerCase();
 function digest(password, salt) { return crypto.scryptSync(String(password || ''), salt, 32); }
@@ -26,25 +30,47 @@ function login(req, body) {
   const attempt = attempts.get(key) || { count: 0, until: now + 15 * 60_000 };
   if (attempt.count >= 10) return { allowed: false, reason: 'Demasiados intentos. Espera 15 minutos.' };
   attempt.count++; attempts.set(key, attempt);
-  let valid = false;
-  if (role === 'admin' && process.env.FENIX_ADMIN_PASSWORD) {
-    valid = equals(digest(body.password, 'fenix-admin'), digest(process.env.FENIX_ADMIN_PASSWORD, 'fenix-admin'));
-  } else {
-    const row = db.prepare('SELECT * FROM access_credentials WHERE email = ?').get(email);
-    if (row) valid = equals(digest(body.password, row.salt), Buffer.from(row.hash, 'hex'));
+
+  if (!permitted(role, sup, email)) {
+    return { allowed: false, reason: 'Revisa el correo y los permisos de este acceso.' };
   }
-  if (!valid || !permitted(role, sup, email)) return { allowed: false, reason: 'Revisa el correo, la clave y los permisos de este acceso.' };
+
+  // Si es admin y hay contraseña configurada en el servidor, se valida
+  if (role === 'admin') {
+    if (process.env.FENIX_ADMIN_PASSWORD) {
+      const valid = equals(digest(body.password, 'fenix-admin'), digest(process.env.FENIX_ADMIN_PASSWORD, 'fenix-admin'));
+      if (!valid) return { allowed: false, reason: 'Clave de administrador incorrecta.' };
+    }
+  }
+  // Para los demás accesos (subadmin, supervisor, moviles), NO se exige contraseña:
+  // el correo autorizado es suficiente para entrar directamente.
+
   attempts.delete(key);
-  for (const [token, session] of sessions) if (session.expires < now) sessions.delete(token);
+
+  // Limpiar sesiones expiradas
+  db.prepare('DELETE FROM active_sessions WHERE expires < ?').run(now);
+
   const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { email, role, sup, expires: now + 12 * 60 * 60_000 });
-  return { allowed: true, email, token };
+  // Sesión de larga duración: 365 días (1 año) guardada en SQLite persistente
+  const ONE_YEAR_MS = 365 * 24 * 60 * 60_000;
+  const expires = now + ONE_YEAR_MS;
+
+  db.prepare('INSERT INTO active_sessions (token, email, role, sup, expires) VALUES (?, ?, ?, ?, ?)')
+    .run(token, email, role, sup, expires);
+
+  return { allowed: true, email, token, expires };
 }
-function tokenFrom(req, url) { return String(req.headers.authorization || '').replace(/^Bearer /i, '') || url.searchParams.get('session') || ''; }
+function tokenFrom(req, url) { return String(req.headers?.authorization || '').replace(/^Bearer /i, '') || url.searchParams.get('session') || ''; }
 function principal(req, url) {
   if (isLocal(req)) return { email: 'preview@localhost', role: 'admin', sup: '' };
-  const session = sessions.get(tokenFrom(req, url));
-  if (!session || session.expires < Date.now() || !permitted(session.role, session.sup, session.email)) return null;
+  const token = tokenFrom(req, url);
+  if (!token) return null;
+  const now = Date.now();
+  const session = db.prepare('SELECT * FROM active_sessions WHERE token = ?').get(token);
+  if (!session || session.expires < now || !permitted(session.role, session.sup, session.email)) {
+    if (session) db.prepare('DELETE FROM active_sessions WHERE token = ?').run(token);
+    return null;
+  }
   return session;
 }
 function canView(session, role, sup) {
@@ -62,8 +88,10 @@ function issueCredential(emailInput) {
   const password = crypto.randomBytes(12).toString('base64url'), salt = crypto.randomBytes(16).toString('hex');
   db.prepare('INSERT INTO access_credentials VALUES (?, ?, ?) ON CONFLICT(email) DO UPDATE SET salt=excluded.salt, hash=excluded.hash')
     .run(email, salt, digest(password, salt).toString('hex'));
-  for (const [token, session] of sessions) if (session.email === email) sessions.delete(token);
   return { email, password };
 }
-function logout(req, url) { sessions.delete(tokenFrom(req, url)); }
+function logout(req, url) {
+  const token = tokenFrom(req, url);
+  if (token) db.prepare('DELETE FROM active_sessions WHERE token = ?').run(token);
+}
 module.exports = { login, principal, canView, issueCredential, logout };

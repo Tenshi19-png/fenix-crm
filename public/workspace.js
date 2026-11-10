@@ -1,7 +1,8 @@
 function apiUrl(route) { return String(window.FENIX_API_BASE || '').replace(/\/$/, '') + route; }
 function requestHeaders() {
+  const token = localStorage.getItem('fenix_session') || sessionStorage.getItem('fenix_session') || '';
   return {
-    Authorization: 'Bearer ' + (sessionStorage.getItem('fenix_session') || ''),
+    Authorization: 'Bearer ' + token,
     'x-fenix-role': state.vista,
     'x-fenix-sup': state.supervisorFiltro || '',
   };
