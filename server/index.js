@@ -69,7 +69,11 @@ function notificarN8n(sale, company, rawBody = {}) {
     const compNombre = company ? (company.nombre || company.hoja) : (sale.company_slug || "");
     const tipoVenta = rawBody.tipo_venta || sale.servicio || (company ? company.hoja : "");
     const ficha = sale.ficha_original || rawBody.ficha || "";
-    const imgUrl = sale.imagen_url || rawBody.imagen_url || "";
+    let imgUrl = sale.imagen_url || rawBody.imagen_url || "";
+    if (imgUrl && !imgUrl.startsWith("http")) {
+      const baseUrl = process.env.PUBLIC_APP_URL || "https://fenix-crm-production-f20e6e67.up.railway.app";
+      imgUrl = baseUrl.replace(/\/+$/, "") + (imgUrl.startsWith("/") ? "" : "/") + imgUrl;
+    }
     const payload = {
       source: "fenix_crm",
       compania: compNombre,
