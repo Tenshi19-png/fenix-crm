@@ -187,10 +187,12 @@ const server = http.createServer(async (req, res) => {
     const isPublicForm = role === 'formulario' && (
       (method === 'GET' && pathname === '/api/bootstrap') ||
       (method === 'POST' && ['/api/sales','/api/ficha/preview'].includes(pathname)));
-    const isIntegration = pathname.startsWith('/api/n8n/') || pathname === '/api/webhook/tally';
+    const hasN8nKey = checkN8nAuth(req, urlObj);
+    const isIntegration = pathname.startsWith('/api/n8n/') || pathname === '/api/webhook/tally' || hasN8nKey;
     if (pathname.startsWith('/api/') && !['/api/health','/api/auth/verify-email','/api/auth/logout'].includes(pathname) && !isPublicForm) {
       if (isIntegration) {
-        if (!checkN8nAuth(req, urlObj)) return sendJson(res, 403, { ok: false, message: 'Clave de integración requerida.' });
+        if (!hasN8nKey) return sendJson(res, 403, { ok: false, message: 'Clave de integración requerida.' });
+        role = 'admin';
       } else {
         if (session && pathname === '/api/events') { role = session.role; reqSup = session.sup; }
         if (!auth.canView(session, role, reqSup)) {
