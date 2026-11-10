@@ -1571,11 +1571,49 @@ tr.month-separator-row:hover td {
   line-height: 1.25;
 }
 
-.is-inactive .sup-card-name {
-  color: #64748b;
+.is-inactive-sales .sup-card-name {
+  color: #334155;
 }
 
-/* Fila 2: Compañía */
+/* Métricas de Ventas */
+.sup-sales-metrics {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: -2px;
+}
+
+.metric-pill {
+  font-size: 11.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.metric-active {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.metric-historical {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.metric-zero {
+  background: #fafaf9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+/* Fila 2: Empresa en la que trabaja */
 .sup-card-company-box {
   display: flex;
   align-items: center;
@@ -1584,16 +1622,62 @@ tr.month-separator-row:hover td {
 .sup-company-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: #0e6553;
+  padding: 4px 10px;
+  border-radius: 8px;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
   background: #eaf6f1;
   border: 1px solid #bfe3d7;
-  padding: 4px 10px;
-  border-radius: 7px;
-  line-height: 1.35;
-  word-break: break-word;
+  color: #0e6553;
+}
+
+.sup-company-badge:hover {
+  background: #def0e7;
+  border-color: #0e6553;
+  transform: translateY(-1px);
+}
+
+.sup-company-badge.no-company {
+  color: #475569;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+}
+
+.sup-company-badge.no-company:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.sup-edit-action {
+  font-size: 11px;
+  color: #0e6553;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(14, 101, 83, 0.1);
+}
+
+.sup-company-badge.no-company .sup-edit-action {
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.1);
+}
+
+.sup-login-paused-tag {
+  font-size: 11px;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-weight: 600;
+  margin-top: 4px;
+  display: inline-block;
 }
 
 /* Fila 3: Botones de Acción */

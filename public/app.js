@@ -524,9 +524,13 @@ function updateHeaderBrand() {
   const compName = comp ? (comp.nombre || comp.hoja) : "";
 
   if (state.vista === "supervisor") {
+    const curSup = (state.meta?.supervisors || []).find(
+      (s) => s.token_acceso === state.supervisorFiltro || s.nombre === state.supervisorFiltro
+    );
+    const empName = curSup?.compania || compName;
     if (brandComp) {
-      if (compName) {
-        brandComp.innerHTML = `🏢 ${esc(compName)}`;
+      if (empName) {
+        brandComp.innerHTML = `🏢 ${esc(empName)}`;
         brandComp.classList.remove("hidden");
       } else {
         brandComp.innerHTML = "";
@@ -536,8 +540,8 @@ function updateHeaderBrand() {
     if (roleBadge) {
       roleBadge.textContent = `Supervisor · ${state.supervisorFiltro || ""}`;
     }
-    document.title = compName
-      ? `${compName} — Fenix CRM (${state.supervisorFiltro})`
+    document.title = empName
+      ? `${empName} — Fenix CRM (${state.supervisorFiltro})`
       : `Supervisor ${state.supervisorFiltro} — Fenix CRM`;
   } else if (state.vista === "subadmin") {
     if (brandComp) {
@@ -596,8 +600,8 @@ function renderViewSwitcher() {
     <optgroup label="Supervisores (Solo Lectura)">
   `;
   for (const s of state.meta.supervisors || []) {
-    const compNote = s.companiaTexto ? ` (${s.companiaTexto})` : "";
-    const actNote = s.activo === false ? " [Inactivo]" : "";
+    const compNote = s.compania ? ` (${s.compania})` : "";
+    const actNote = s.activoVentas ? " [Activo]" : " [Sin ventas]";
     html += `<option value="sup:${esc(s.nombre)}">${esc(s.nombre)}${esc(compNote)}${actNote}</option>`;
   }
   html += `</optgroup>`;
@@ -2083,7 +2087,8 @@ function renderSupervisorsPanel() {
 
   const allSupervisors = state.meta.supervisors || [];
   const totalCount = allSupervisors.length;
-  const activeCount = allSupervisors.filter((s) => s.activo !== false).length;
+  // Activo = si el supervisor está activo subiendo ventas
+  const activeCount = allSupervisors.filter((s) => s.activoVentas === true).length;
   const inactiveCount = totalCount - activeCount;
 
   const countAllEl = document.getElementById("countSupsAll");
@@ -2097,15 +2102,14 @@ function renderSupervisorsPanel() {
   const searchQ = (state.supSearchQuery || "").toLowerCase().trim();
 
   const filteredSups = allSupervisors.filter((s) => {
-    const isActive = s.activo !== false;
-    if (filterMode === "activos" && !isActive) return false;
-    if (filterMode === "inactivos" && isActive) return false;
+    const isSalesActive = s.activoVentas === true;
+    if (filterMode === "activos" && !isSalesActive) return false;
+    if (filterMode === "inactivos" && isSalesActive) return false;
     if (searchQ) {
       const matchName = String(s.nombre || "").toLowerCase().includes(searchQ);
-      const matchComp = String(s.companiaTexto || s.compania || "").toLowerCase().includes(searchQ);
-      const matchAliases = String(s.aliases || "").toLowerCase().includes(searchQ);
+      const matchComp = String(s.compania || "").toLowerCase().includes(searchQ);
       const matchEmails = String(s.correos_autorizados || "").toLowerCase().includes(searchQ);
-      if (!matchName && !matchComp && !matchAliases && !matchEmails) return false;
+      if (!matchName && !matchComp && !matchEmails) return false;
     }
     return true;
   });
@@ -2116,7 +2120,7 @@ function renderSupervisorsPanel() {
   if (filteredSups.length === 0) {
     grid.innerHTML = `
       <div style="grid-column: 1 / -1; padding: 28px; text-align: center; color: #64748b; background: #fff; border: 1px dashed #cbd5e1; border-radius: 10px;">
-        No se encontraron supervisores ${filterMode === "activos" ? "activos" : filterMode === "inactivos" ? "inactivos" : ""} con el filtro actual.
+        No se encontraron supervisores ${filterMode === "activos" ? "activos subiendo ventas" : filterMode === "inactivos" ? "inactivos" : ""} con el filtro actual.
       </div>
     `;
     return;
@@ -2126,43 +2130,61 @@ function renderSupervisorsPanel() {
     .map((s) => {
       const relUrl = `/?vista=supervisor&sup=${encodeURIComponent(s.token_acceso)}`;
       const ini = s.nombre.charAt(0).toUpperCase();
-      const isActive = s.activo !== false;
-      const compLabel = s.companiaTexto || s.compania || "Fenix Multi-Compañía";
+      const isSalesActive = s.activoVentas === true;
+      const isLoginActive = s.activo !== false;
+      const empresa = (s.compania || "").trim();
+
       return `
-        <div class="sup-card ${isActive ? '' : 'is-inactive'}">
-          <!-- 1. Encabezado: Avatar + Nombre + Estado -->
+        <div class="sup-card ${isSalesActive ? 'is-active-sales' : 'is-inactive-sales'}">
+          <!-- 1. Encabezado: Avatar + Nombre + Estado de Ventas -->
           <div class="sup-card-header">
             <div class="sup-card-identity">
-              <div class="sup-avatar ${isActive ? '' : 'avatar-inactive'}">${esc(ini)}</div>
+              <div class="sup-avatar ${isSalesActive ? '' : 'avatar-inactive'}">${esc(ini)}</div>
               <div class="sup-card-title-group">
                 <h4 class="sup-card-name">${esc(s.nombre)}</h4>
-                <span class="sup-status-badge ${isActive ? 'sup-status-active' : 'sup-status-inactive'}">
-                  <span class="${isActive ? 'sup-dot-active' : 'sup-dot-inactive'}"></span>
-                  ${isActive ? 'Activo' : 'Inactivo'}
-                </span>
+                ${isSalesActive
+                  ? `<span class="sup-status-badge sup-status-active" title="Supervisor activo subiendo ventas">
+                       <span class="sup-dot-active"></span> Activo
+                     </span>`
+                  : `<span class="sup-status-badge sup-status-inactive" title="${s.totalVentas > 0 ? 'Sin ventas recientes' : 'Sin ventas registradas'}">
+                       <span class="sup-dot-inactive"></span> Inactivo
+                     </span>`
+                }
               </div>
             </div>
           </div>
 
-          <!-- 2. Compañía Asociada -->
+          <!-- 2. Métricas Reales de Ventas -->
+          <div class="sup-sales-metrics">
+            ${isSalesActive
+              ? `<span class="metric-pill metric-active" title="Ventas registradas">📈 <b>${s.ventasRecientes || 0}</b> ventas este mes · <b>${s.totalVentas || 0}</b> total</span>`
+              : (s.totalVentas > 0)
+                ? `<span class="metric-pill metric-historical" title="Histórico de ventas">⏳ <b>${s.totalVentas}</b> ventas históricas · Última: ${esc(s.ultimaVentaFecha || 'N/D')}</span>`
+                : `<span class="metric-pill metric-zero" title="Sin ventas subidas aún">📭 0 ventas registradas</span>`
+            }
+          </div>
+
+          <!-- 3. Empresa en la que trabaja (Editable con 1 clic) -->
           <div class="sup-card-company-box">
-            <div class="sup-company-badge" title="Compañía asociada a este acceso">
-              🏢 <b>Compañía:</b> <span>${esc(compLabel)}</span>
+            <div class="sup-company-badge ${empresa ? 'has-company' : 'no-company'}" onclick="window.app.editSupervisorCompany(${s.id}, '${esc(empresa)}', '${esc(s.nombre)}')" title="Clic para asignar o cambiar la empresa en la que trabaja">
+              🏢 <b>Empresa:</b> <span>${esc(empresa || 'Sin asignar')}</span>
+              <span class="sup-edit-action">${empresa ? '✏️ Cambiar' : '+ Asignar empresa'}</span>
             </div>
           </div>
 
-          <!-- 3. Botones de Acción (Fila dedicada con espacio holgado) -->
+          <!-- 4. Botones de Acción (Fila dedicada con espacio holgado) -->
           <div class="sup-card-actions-bar">
-            ${isActive
-              ? `<button class="btn btn-outline btn-sm btn-sup-action" onclick="window.app.toggleSupervisorStatus(${s.id}, false)" title="Desactivar temporalmente este acceso">Desactivar</button>`
-              : `<button class="btn btn-success btn-sm btn-sup-action" onclick="window.app.toggleSupervisorStatus(${s.id}, true)" title="Reactivar acceso">Activar</button>`
+            ${isLoginActive
+              ? `<button class="btn btn-outline btn-sm btn-sup-action" onclick="window.app.toggleSupervisorStatus(${s.id}, false)" title="Pausar temporalmente acceso web a este supervisor">Pausar Acceso</button>`
+              : `<button class="btn btn-success btn-sm btn-sup-action" onclick="window.app.toggleSupervisorStatus(${s.id}, true)" title="Habilitar acceso web">Habilitar Acceso</button>`
             }
             <button class="btn btn-outline btn-sm btn-sup-action" onclick="window.open('${relUrl}', '_blank')" title="Abrir portal del supervisor">Abrir ↗</button>
             <button class="btn btn-primary btn-sm btn-sup-action btn-sup-copy" onclick="window.app.copyLink('${relUrl}', 'Link de ${esc(s.nombre)} copiado')">Copiar Link</button>
             <button class="btn btn-outline btn-sm btn-sup-del" onclick="window.app.removeSupervisor(${s.id}, '${esc(s.nombre)}')" title="Eliminar supervisor">✕</button>
           </div>
+          ${!isLoginActive ? `<div class="sup-login-paused-tag">🔒 Acceso al portal web pausado por Admin</div>` : ''}
 
-          <!-- 4. Permisos de Correo Electrónico -->
+          <!-- 5. Permisos de Correo Electrónico -->
           <div class="sup-card-emails-box">
             ${renderEmailChipsBox("sup", String(s.id), s.correos_autorizados || "", `Correo de ${s.nombre}...`)}
           </div>
@@ -2170,6 +2192,25 @@ function renderSupervisorsPanel() {
       `;
     })
     .join("");
+}
+
+async function editSupervisorCompany(id, currentComp, supName) {
+  const val = prompt(
+    `Empresa en la que trabaja ${supName || "el supervisor"}:\n(Por ejemplo: Entel, Movistar, Claro, WOM, VTR, etc.)`,
+    currentComp || ""
+  );
+  if (val === null) return; // Cancelado
+  const trimmed = val.trim();
+  try {
+    await api(`/api/supervisors/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ compania: trimmed }),
+    });
+    toast(trimmed ? `Empresa de ${supName} actualizada a "${trimmed}"` : `Empresa de ${supName} desasignada`);
+    await loadBootstrap();
+  } catch (err) {
+    toast("Error al actualizar empresa: " + err.message);
+  }
 }
 
 async function addSupervisor() {
@@ -2476,6 +2517,7 @@ window.app = {
   removeAuthorizedEmail,
   addSupervisor,
   removeSupervisor,
+  editSupervisorCompany,
   toggleSupervisorStatus,
   filterSupervisors,
   onSupervisorSearch,

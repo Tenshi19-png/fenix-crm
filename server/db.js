@@ -2380,27 +2380,55 @@ function getFormMetadata(options = {}) {
 
   const countsRows = db.prepare("SELECT company_slug, supervisor, COUNT(*) as total FROM sales GROUP BY company_slug, supervisor").all();
   const countsMap = {};
-  const compMap = new Map(companies.map((c) => [c.slug, c.nombre]));
-  const supsCompMap = {};
-  for (const s of allSups) supsCompMap[s.nombre] = new Set();
-
   for (const row of countsRows) {
     if (!options.supervisor || supervisorMatchesFilter(row.supervisor, options.supervisor, supsCache)) {
       countsMap[row.company_slug] = (countsMap[row.company_slug] || 0) + row.total;
     }
-    const cName = compMap.get(row.company_slug);
-    if (cName) {
-      const canon = resolveCanonicalSupervisor(row.supervisor, supsCache);
-      if (supsCompMap[canon]) supsCompMap[canon].add(cName);
+  }
+
+  // Estadísticas reales de actividad de ventas por supervisor
+  // Punto de corte para determinar si está activo subiendo ventas (últimos 40-45 días de actividad)
+  const cutoff = 20261001;
+  const salesStatsRows = db.prepare(`
+    SELECT supervisor,
+           COUNT(*) as total,
+           SUM(CASE WHEN fecha_orden >= ? THEN 1 ELSE 0 END) as recientes,
+           MAX(fecha) as ult_fecha,
+           MAX(fecha_orden) as ult_orden
+    FROM sales
+    WHERE supervisor IS NOT NULL AND trim(supervisor) != ''
+    GROUP BY supervisor
+  `).all(cutoff);
+
+  const statsMap = new Map();
+  for (const s of allSups) {
+    statsMap.set(s.nombre, { total: 0, recientes: 0, ult_fecha: null, ult_orden: 0 });
+  }
+
+  for (const r of salesStatsRows) {
+    const canon = resolveCanonicalSupervisor(r.supervisor, supsCache);
+    if (statsMap.has(canon)) {
+      const st = statsMap.get(canon);
+      st.total += r.total;
+      st.recientes += (r.recientes || 0);
+      if (r.ult_orden && r.ult_orden > (st.ult_orden || 0)) {
+        st.ult_orden = r.ult_orden;
+        st.ult_fecha = r.ult_fecha;
+      }
     }
   }
 
   const enrichedSupervisors = supervisors.map((s) => {
-    const detectedComps = Array.from(supsCompMap[s.nombre] || []);
+    const st = statsMap.get(s.nombre) || { total: 0, recientes: 0, ult_fecha: null, ult_orden: 0 };
+    const compLimpia = (s.compania || "").trim();
     return {
       ...s,
-      companias: detectedComps,
-      companiaTexto: s.compania || (detectedComps.length > 0 ? detectedComps.join(", ") : "Fenix Multi-Compañía"),
+      compania: compLimpia,
+      companiaTexto: compLimpia,
+      totalVentas: st.total,
+      ventasRecientes: st.recientes,
+      ultimaVentaFecha: st.ult_fecha,
+      activoVentas: st.recientes > 0,
     };
   });
 
