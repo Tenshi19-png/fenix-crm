@@ -61,6 +61,48 @@ function broadcastEvent(type, payload = {}) {
   }
 }
 
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || "https://bot-n8n.7lshe4.easypanel.host/webhook/web";
+
+function notificarN8n(sale, company, rawBody = {}) {
+  if (!N8N_WEBHOOK_URL) return;
+  try {
+    const compNombre = company ? (company.nombre || company.hoja) : (sale.company_slug || "");
+    const tipoVenta = rawBody.tipo_venta || sale.servicio || (company ? company.hoja : "");
+    const ficha = sale.ficha_original || rawBody.ficha || "";
+    const imgUrl = sale.imagen_url || rawBody.imagen_url || "";
+    const payload = {
+      source: "fenix_crm",
+      compania: compNombre,
+      tipoVenta,
+      ejecutivo: sale.ejecutivo || "",
+      supervisor: sale.supervisor || "",
+      ficha,
+      imagenUrl: imgUrl,
+      data: {
+        fields: [
+          { label: "Compañía", value: compNombre },
+          { label: "Tipo de venta", value: tipoVenta },
+          { label: "Ejecutivo", value: sale.ejecutivo || "" },
+          { label: "Supervisor", value: sale.supervisor || "" },
+          { label: "Hizo click", value: sale.hizo_click || rawBody.hizo_click || "" },
+          { label: "Imagen", value: imgUrl ? [{ url: imgUrl, name: "click.jpg" }] : [] },
+          { label: "Ficha", value: ficha }
+        ]
+      }
+    };
+
+    fetch(N8N_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch((err) => {
+      console.warn("Aviso: no se pudo notificar a n8n:", err.message);
+    });
+  } catch (err) {
+    console.warn("Aviso al armar payload para n8n:", err.message);
+  }
+}
+
 const CORS_HEADERS = {
 
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
@@ -389,6 +431,7 @@ const server = http.createServer(async (req, res) => {
         hoja: result.company.hoja,
         sale: result.sale,
       });
+      notificarN8n(result.sale, result.company, body);
       return sendJson(res, 201, result);
     }
 
@@ -710,6 +753,11 @@ const server = http.createServer(async (req, res) => {
       // Endpoint para registrar ventas directamente desde n8n
       if (method === "POST" && (pathname === "/api/n8n/registrar-venta" || pathname === "/api/n8n/sales")) {
         const body = await readJsonBody(req);
+
+        // Si la venta ya fue originada en Fenix CRM, no la duplicamos
+        if (body.source === "fenix_crm") {
+          return sendJson(res, 200, { ok: true, source: "fenix_crm", message: "Venta originada en CRM, sincronizada." });
+        }
 
         let operador = body.operador || body.compania || body.datosVenta?.compania || "";
         let tipoVenta = body.tipo_venta || body.tipoVenta || body.datosVenta?.tipoVenta || "";
