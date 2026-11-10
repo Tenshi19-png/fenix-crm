@@ -78,6 +78,15 @@ function notificarN8n(sale, company, rawBody = {}) {
       supervisor: sale.supervisor || "",
       ficha,
       imagenUrl: imgUrl,
+      cliente: {
+        nombre: sale.nombre_cliente || "",
+        rut: sale.rut || "",
+        telefono: sale.telefono || sale.numero_principal || "",
+        direccion: sale.direccion || "",
+        comuna: sale.comuna || "",
+        servicio: sale.servicio || "",
+        id_orden: sale.id_orden || ""
+      },
       data: {
         fields: [
           { label: "Compañía", value: compNombre },
