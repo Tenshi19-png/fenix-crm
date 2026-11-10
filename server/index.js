@@ -44,7 +44,7 @@ const { parseXlsxBuffer } = require("./xlsxReader");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const PORT = Number(process.env.PORT || 3456);
-const N8N_API_KEY = process.env.N8N_API_KEY || "";
+const N8N_API_KEY = process.env.N8N_API_KEY || "fenix_n8n_secret_token_2026";
 
 // Clientes conectados en vivo por Server-Sent Events (SSE)
 const sseClients = new Set();
@@ -663,7 +663,7 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      if ((method === "GET" || method === "POST") && pathname === "/api/n8n/ventas") {
+      if ((method === "GET" || method === "POST") && (pathname === "/api/n8n/ventas" || pathname === "/api/n8n/consultar")) {
         const body = method === "POST" ? await readJsonBody(req) : {};
         const params = {
           desde: body.desde || urlObj.searchParams.get("desde") || "",
