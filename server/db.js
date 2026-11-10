@@ -1095,20 +1095,58 @@ function getCompanySales(companySlug, options = {}) {
 // ============================================================================
 
 function formatDailySummaryTelegram(summary) {
-  const lines = [`📊 *Reporte de Ventas Fenix — ${summary.fecha}*`, `⭐ *Total General:* ${summary.granTotal}`];
+  const lines = [
+    `╔════════════════════════════════════╗`,
+    `  🔥  *REPORTE DIARIO DE VENTAS*  🔥`,
+    `  📅  *Fecha:* ${summary.fecha}`,
+    `  🌟  *Total General:* ${summary.granTotal} ventas`,
+    `╚════════════════════════════════════╝`,
+    ``
+  ];
+
   if (!summary.bloques || summary.bloques.length === 0) {
-    lines.push("", "_Sin ventas registradas en esta fecha._");
+    lines.push("_Sin ventas registradas en esta fecha._");
     return lines.join("\n");
   }
+
+  // Resumen rápido de totales por Compañía
+  const compTotals = {};
   for (const b of summary.bloques) {
-    lines.push("", `👤 *${b.supervisor}* — Total: *${b.total}*`);
     for (const c of b.campanias) {
-      lines.push(`  ${c.titulo}: *${c.total}*`);
-      for (const ej of c.listaEjecutivos) {
-        lines.push(`    • ${ej.nombre}: ${ej.cantidad}`);
-      }
+      compTotals[c.titulo] = (compTotals[c.titulo] || 0) + c.total;
     }
   }
+
+  lines.push(`🏢 *TOTALES POR COMPAÑÍA:*`);
+  for (const [titulo, cant] of Object.entries(compTotals).sort((a, b) => b[1] - a[1])) {
+    lines.push(`• ${titulo}: *${cant}*`);
+  }
+
+  lines.push(``, `👑 *TOTALES POR SUPERVISOR:*`);
+  for (const b of summary.bloques) {
+    lines.push(`• 👤 *${b.supervisor}:* ${b.total} ventas`);
+  }
+
+  lines.push(``, `════════════════════════════════════`);
+  lines.push(`👥 *DETALLE POR EQUIPO Y COMPAÑÍA*`);
+  lines.push(`════════════════════════════════════`);
+
+  for (const b of summary.bloques) {
+    lines.push(``);
+    lines.push(`👤 *SUPERVISOR: ${b.supervisor.toUpperCase()}*  ⭐ [${b.total} ventas]`);
+    lines.push(`────────────────────────────────────`);
+
+    for (const c of b.campanias) {
+      lines.push(`  ${c.titulo} (${c.total})`);
+      const list = c.listaEjecutivos || [];
+      list.forEach((ej, idx) => {
+        const medal = idx === 0 && ej.cantidad > 1 ? "🥇" : idx === 1 && ej.cantidad > 1 ? "🥈" : idx === 2 && ej.cantidad > 1 ? "🥉" : "🔹";
+        lines.push(`     ${medal} ${ej.cantidad} ➔ ${ej.nombre}`);
+      });
+      lines.push(``);
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -1579,28 +1617,75 @@ function querySalesForN8n(params = {}) {
 
   // Generar resumen listo para enviar directo a Telegram desde n8n
   const rangoTxt = desdeStr === hastaStr ? desdeStr : `${desdeStr} al ${hastaStr}`;
+  const hojaTitulo = params.hoja && hojaParam !== "todas" ? params.hoja.toUpperCase() : "TODAS LAS HOJAS (CONSOLIDADO)";
   const tgLines = [
-    `📊 *Consulta de Ventas Fenix*`,
-    `📅 *Período:* ${rangoTxt}`,
-    params.hoja && hojaParam !== "todas" ? `📋 *Hoja:* ${params.hoja}` : `📋 *Hojas:* Todas`,
-    params.supervisor ? `👤 *Supervisor:* ${params.supervisor}` : null,
-    `✅ *Total encontradas:* ${ventasLimpias.length}`,
-  ].filter(Boolean);
+    `╔════════════════════════════════════╗`,
+    `  🏢  *REPORTE: ${hojaTitulo}*`,
+    `  📅  *Período:* ${rangoTxt}`,
+    `  ⭐  *Total Encontradas:* ${ventasLimpias.length} ventas`,
+    `╚════════════════════════════════════╝`,
+    ``
+  ];
 
   if (ventasLimpias.length > 0) {
     tgLines.push(
-      `⚡ Estados: 🟢 Inst/Port: ${porEstado.Instalado + porEstado.Portado} | 🟡 Pend: ${porEstado.Pendiente} | 🔴 Canc: ${porEstado.Cancelado}`
+      `⚡ *Estados:* 🟢 Inst/Port: ${porEstado.Instalado + porEstado.Portado} | 🟡 Pend: ${porEstado.Pendiente} | 🔴 Canc: ${porEstado.Cancelado}`,
+      ``
     );
-    tgLines.push("", "*Desglose por Compañía:*");
-    for (const [h, cant] of Object.entries(porHoja).sort((a, b) => b[1] - a[1])) {
-      tgLines.push(`• ${h}: *${cant}*`);
+
+    if (!params.hoja || hojaParam === "todas") {
+      tgLines.push(`🏢 *TOTALES POR COMPAÑÍA:*`);
+      for (const [h, cant] of Object.entries(porHoja).sort((a, b) => b[1] - a[1])) {
+        tgLines.push(`• ${h}: *${cant}*`);
+      }
+      tgLines.push(``);
     }
-    tgLines.push("", "*Por Supervisor:*");
+
+    tgLines.push(`👑 *TOTALES POR SUPERVISOR:*`);
     for (const [s, cant] of Object.entries(porSupervisor).sort((a, b) => b[1] - a[1])) {
-      tgLines.push(`• ${s}: *${cant}*`);
+      tgLines.push(`• 👤 *${s}:* ${cant} ventas`);
+    }
+
+    tgLines.push(``, `════════════════════════════════════`);
+    tgLines.push(`👥 *DETALLE POR SUPERVISOR Y EQUIPO*`);
+    tgLines.push(`════════════════════════════════════`);
+
+    const agrupadoSup = {};
+    for (const v of ventasLimpias) {
+      const sup = v.supervisor || "Sin Supervisor";
+      if (!agrupadoSup[sup]) agrupadoSup[sup] = { total: 0, campanias: {}, ejecutivos: {} };
+      agrupadoSup[sup].total++;
+      agrupadoSup[sup].ejecutivos[v.ejecutivo] = (agrupadoSup[sup].ejecutivos[v.ejecutivo] || 0) + 1;
+      if (!agrupadoSup[sup].campanias[v.hoja]) agrupadoSup[sup].campanias[v.hoja] = { total: 0, ejecutivos: {} };
+      agrupadoSup[sup].campanias[v.hoja].total++;
+      agrupadoSup[sup].campanias[v.hoja].ejecutivos[v.ejecutivo] = (agrupadoSup[sup].campanias[v.hoja].ejecutivos[v.ejecutivo] || 0) + 1;
+    }
+
+    for (const [sup, info] of Object.entries(agrupadoSup).sort((a, b) => b[1].total - a[1].total)) {
+      tgLines.push(``);
+      tgLines.push(`👤 *SUPERVISOR: ${sup.toUpperCase()}*  ⭐ [${info.total} ventas]`);
+      tgLines.push(`────────────────────────────────────`);
+
+      if (params.hoja && hojaParam !== "todas") {
+        const ejs = Object.entries(info.ejecutivos).sort((a, b) => b[1] - a[1]);
+        ejs.forEach(([eje, cant], idx) => {
+          const medal = idx === 0 && cant > 1 ? "🥇" : idx === 1 && cant > 1 ? "🥈" : idx === 2 && cant > 1 ? "🥉" : "🔹";
+          tgLines.push(`   ${medal} ${cant} ➔ ${eje}`);
+        });
+      } else {
+        for (const [hoja, hInfo] of Object.entries(info.campanias).sort((a, b) => b[1].total - a[1].total)) {
+          tgLines.push(`  📋 ${hoja} (${hInfo.total})`);
+          const ejs = Object.entries(hInfo.ejecutivos).sort((a, b) => b[1] - a[1]);
+          ejs.forEach(([eje, cant], idx) => {
+            const medal = idx === 0 && cant > 1 ? "🥇" : idx === 1 && cant > 1 ? "🥈" : idx === 2 && cant > 1 ? "🥉" : "🔹";
+            tgLines.push(`     ${medal} ${cant} ➔ ${eje}`);
+          });
+          tgLines.push(``);
+        }
+      }
     }
   } else {
-    tgLines.push("", "_No se encontraron ventas para este filtro._");
+    tgLines.push(`_No se encontraron ventas para este filtro._`);
   }
 
   return {

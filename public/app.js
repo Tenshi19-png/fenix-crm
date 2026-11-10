@@ -1559,43 +1559,98 @@ async function loadDailySummary(customFechaLatina = null) {
     return;
   }
 
-  container.innerHTML = data.bloques
-    .map(
-      (b) => `
-      <div class="sup-daily-block">
-        <div class="sup-daily-header">
-          <h3>Resumen: ${esc(b.supervisor)}</h3>
-          <span class="sup-total-pill">TOTAL: ${b.total}</span>
-        </div>
-        <div class="camp-cards-grid">
-          ${b.campanias
+  // Calcular totales globales por compañía para la barra superior
+  const compTotals = {};
+  data.bloques.forEach((b) => {
+    b.campanias.forEach((c) => {
+      compTotals[c.titulo] = compTotals[c.titulo] || { titulo: c.titulo, color: c.color, total: 0 };
+      compTotals[c.titulo].total += c.total;
+    });
+  });
+
+  const kpisHtml = `
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px 20px; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+      <div style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">🏢 Ventas por Compañía</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;">
+        ${Object.values(compTotals)
+          .sort((a, b) => b.total - a.total)
           .map(
             (c) => `
-              <div class="camp-daily-card">
-                <div class="camp-daily-head" style="background:${esc(c.color)}">${esc(c.titulo)}</div>
-                <div class="camp-daily-sub">${esc(b.supervisor)}</div>
-                <div class="camp-daily-list">
-                  ${c.listaEjecutivos
-                .map(
-                  (ej) => `
-                      <div class="camp-exec-row">
-                        <span>${esc(ej.nombre)}</span>
-                        <b>${ej.cantidad}</b>
-                      </div>
-                    `
-                )
-                .join("")}
-                </div>
-                <div class="camp-daily-foot" style="background:${esc(c.color)}">TOTAL: ${c.total}</div>
-              </div>
-            `
+            <div style="display:flex; align-items:center; gap:6px; background:#f8fafc; border:1px solid #e2e8f0; padding:6px 12px; border-radius:20px; font-size:13px;">
+              <span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:${esc(c.color)};"></span>
+              <span>${esc(c.titulo)}:</span>
+              <strong style="color:#0f172a;">${c.total}</strong>
+            </div>
+          `
           )
           .join("")}
+      </div>
+
+      <div style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">👑 Ventas por Supervisor</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        ${data.bloques
+          .map(
+            (b) => `
+            <div style="display:flex; align-items:center; gap:6px; background:#f0fdf4; border:1px solid #bbf7d0; padding:6px 12px; border-radius:20px; font-size:13px; color:#166534;">
+              <span>👤 <b>${esc(b.supervisor)}:</b></span>
+              <span style="background:#16a34a; color:#fff; border-radius:10px; padding:1px 7px; font-size:11.5px; font-weight:700;">${b.total}</span>
+            </div>
+          `
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+
+  container.innerHTML =
+    kpisHtml +
+    data.bloques
+      .map(
+        (b) => `
+      <div class="sup-daily-block" style="border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+        <div class="sup-daily-header" style="background:#f8fafc; border-bottom:1px solid #e2e8f0; padding:14px 20px;">
+          <h3 style="display:flex; align-items:center; gap:8px; margin:0; font-size:16px;">
+            <span>👤</span>
+            <span>Equipo: <b>${esc(b.supervisor)}</b></span>
+          </h3>
+          <span class="sup-total-pill" style="background:#0f172a; color:#fff; font-weight:700; font-size:13px; padding:4px 12px; border-radius:20px;">TOTAL: ${b.total}</span>
+        </div>
+        <div class="camp-cards-grid" style="padding:16px; background:#fff;">
+          ${b.campanias
+            .map(
+              (c) => `
+              <div class="camp-daily-card" style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+                <div class="camp-daily-head" style="background:${esc(c.color)}; color:#fff; font-weight:700; padding:10px 14px; font-size:13px;">${esc(c.titulo)}</div>
+                <div class="camp-daily-sub" style="padding:6px 12px; background:#f8fafc; border-bottom:1px solid #f1f5f9; font-size:12px; color:#475569;">
+                  <span>👤 Supervisor: <b>${esc(b.supervisor)}</b></span>
+                </div>
+                <div class="camp-daily-list" style="padding:10px 12px;">
+                  ${c.listaEjecutivos
+                    .map(
+                      (ej, idx) => {
+                        const medal = idx === 0 && ej.cantidad > 1 ? "🥇 " : idx === 1 && ej.cantidad > 1 ? "🥈 " : idx === 2 && ej.cantidad > 1 ? "🥉 " : "";
+                        return `
+                          <div class="camp-exec-row" style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px dashed #f1f5f9; font-size:12.5px;">
+                            <span>${medal}${esc(ej.nombre)}</span>
+                            <b style="background:#f1f5f9; padding:2px 7px; border-radius:10px; color:#0f172a;">${ej.cantidad}</b>
+                          </div>
+                        `;
+                      }
+                    )
+                    .join("")}
+                </div>
+                <div class="camp-daily-foot" style="background:#f8fafc; border-top:1px solid #e2e8f0; color:#334155; font-weight:700; padding:8px 12px; font-size:12px; text-align:right;">
+                  Subtotal: <b style="color:${esc(c.color)}; font-size:13px;">${c.total}</b>
+                </div>
+              </div>
+            `
+            )
+            .join("")}
         </div>
       </div>
     `
-    )
-    .join("");
+      )
+      .join("");
 }
 
 // ============================================================================
