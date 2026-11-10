@@ -525,8 +525,13 @@ function updateHeaderBrand() {
 
   if (state.vista === "supervisor") {
     if (brandComp) {
-      brandComp.textContent = compName ? `· ${compName}` : "";
-      brandComp.classList.toggle("hidden", !compName);
+      if (compName) {
+        brandComp.innerHTML = `🏢 ${esc(compName)}`;
+        brandComp.classList.remove("hidden");
+      } else {
+        brandComp.innerHTML = "";
+        brandComp.classList.add("hidden");
+      }
     }
     if (roleBadge) {
       roleBadge.textContent = `Supervisor · ${state.supervisorFiltro || ""}`;
@@ -536,25 +541,36 @@ function updateHeaderBrand() {
       : `Supervisor ${state.supervisorFiltro} — Fenix CRM`;
   } else if (state.vista === "subadmin") {
     if (brandComp) {
-      brandComp.textContent = compName ? `· ${compName}` : "";
-      brandComp.classList.toggle("hidden", !compName);
+      if (compName) {
+        brandComp.innerHTML = `🏢 ${esc(compName)}`;
+        brandComp.classList.remove("hidden");
+      } else {
+        brandComp.innerHTML = "";
+        brandComp.classList.add("hidden");
+      }
     }
     if (roleBadge) roleBadge.textContent = "Ventas Fenix";
     document.title = compName ? `${compName} — Ventas Fenix` : "Ventas Fenix — CRM";
   } else if (state.vista === "moviles") {
     if (brandComp) {
-      brandComp.textContent = "· Móviles";
+      brandComp.innerHTML = "📱 Móviles";
       brandComp.classList.remove("hidden");
     }
     if (roleBadge) roleBadge.textContent = "Espejo Móviles";
     document.title = "Espejo Móviles — Fenix CRM";
   } else if (state.vista === "formulario") {
-    if (brandComp) brandComp.classList.add("hidden");
+    if (brandComp) {
+      brandComp.innerHTML = "";
+      brandComp.classList.add("hidden");
+    }
     if (roleBadge) roleBadge.textContent = "Formulario de Ventas";
     document.title = "Formulario de Ventas — Fenix CRM";
   } else {
     // Admin Principal
-    if (brandComp) brandComp.classList.add("hidden");
+    if (brandComp) {
+      brandComp.innerHTML = "";
+      brandComp.classList.add("hidden");
+    }
     if (roleBadge) roleBadge.textContent = "Principal";
     document.title = "Fenix CRM — Gestión de Ventas";
   }

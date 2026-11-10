@@ -1,4 +1,4 @@
-﻿/* ============================================================================
+/* ============================================================================
    FENIX CRM — DISEÑO MINIMALISTA, LIMPIO Y PROFESIONAL
    ============================================================================ */
 :root {
@@ -53,29 +53,31 @@ body.standalone-form-mode #btnCopyFormLink {
 .topbar {
   background: #ffffff;
   border-bottom: 1px solid var(--border);
-  padding: 9px 22px;
+  padding: 10px 22px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
   position: sticky;
   top: 0;
   z-index: 60;
+  min-height: 58px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   cursor: pointer;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .brand-logo {
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  background: linear-gradient(135deg, #137e68, #229a81);
   color: #fff;
   font-weight: 700;
   font-size: 15px;
@@ -83,15 +85,37 @@ body.standalone-form-mode #btnCopyFormLink {
   align-items: center;
   justify-content: center;
   letter-spacing: -0.5px;
+  flex-shrink: 0;
 }
 
 .brand-title {
   font-size: 15px;
   font-weight: 700;
   color: var(--text);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
+}
+
+.brand-company-badge,
+.brand-company-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #0e6553;
+  background: #eaf6f1;
+  border: 1px solid #bfe3d7;
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.brand-company-badge.hidden,
+.brand-company-text.hidden {
+  display: none !important;
 }
 
 .role-badge {
@@ -102,6 +126,8 @@ body.standalone-form-mode #btnCopyFormLink {
   color: #1d4ed8;
   border: 1px solid #bfdbfe;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .brand-sub {
@@ -110,6 +136,7 @@ body.standalone-form-mode #btnCopyFormLink {
   display: flex;
   align-items: center;
   gap: 5px;
+  white-space: nowrap;
 }
 
 .dot-live {
@@ -120,16 +147,19 @@ body.standalone-form-mode #btnCopyFormLink {
 }
 
 .global-search-wrap {
-  flex: 1;
-  max-width: 460px;
+  flex: 1 1 280px;
+  min-width: 240px;
+  max-width: 440px;
   position: relative;
   display: flex;
   align-items: center;
+  margin: 0 12px;
 }
 
 .global-search-wrap input {
   width: 100%;
-  padding: 7px 52px 7px 34px;
+  min-width: 0;
+  padding: 8px 52px 8px 36px;
   border-radius: 9px;
   border: 1px solid var(--border);
   background: #f8fafc;
@@ -141,7 +171,7 @@ body.standalone-form-mode #btnCopyFormLink {
 .global-search-wrap input:focus {
   background: #fff;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(19, 126, 104, 0.15);
 }
 
 .search-ico {
@@ -166,25 +196,55 @@ body.standalone-form-mode #btnCopyFormLink {
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex-shrink: 0;
+  justify-content: flex-end;
 }
 
 .view-switcher-wrap {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .view-switcher-wrap select {
-  width: auto;
-  padding: 5px 10px;
+  max-width: 210px;
+  padding: 6px 10px;
   border-radius: 8px;
   font-size: 12px;
   background: #f8fafc;
   border: 1px solid var(--border);
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email-session-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  color: #334155;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.email-session-chip span {
+  max-width: 175px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 /* NAVEGACIÓN PRINCIPAL */
@@ -1783,16 +1843,23 @@ tr.month-separator-row:hover td {
 /* ============================================================
    BRANDING CON COMPAÑÍA & TARJETAS DE SUPERVISORES ACTIVOS/INACTIVOS
    ============================================================ */
-.brand-company-text {
-  display: inline-block;
-  font-weight: 700;
-  font-size: 13.5px;
-  color: #0d6350;
-  margin-left: 3px;
-  letter-spacing: -0.2px;
+.brand-company-text,
+.brand-company-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #0e6553;
+  background: #eaf6f1;
+  border: 1px solid #bfe3d7;
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
-.brand-company-text.hidden {
+.brand-company-text.hidden,
+.brand-company-badge.hidden {
   display: none !important;
 }
 
@@ -1899,5 +1966,46 @@ tr.month-separator-row:hover td {
   background: rgba(255,255,255,0.25);
   color: #fff;
 }
+
+/* ============================================================
+   RESPONSIVE TOPBAR: ESPACIO Y SEPARACIÓN ÓPTIMA
+   ============================================================ */
+@media (max-width: 1240px) {
+  .topbar {
+    padding: 10px 18px;
+    gap: 12px 18px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    order: 1;
+  }
+  .topbar-actions {
+    order: 2;
+    margin-left: auto;
+    gap: 8px;
+  }
+  .global-search-wrap {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: 100%;
+    margin: 4px 0 0 0;
+    min-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .topbar-actions {
+    width: 100%;
+    order: 2;
+    justify-content: flex-start;
+    margin-left: 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .view-switcher-wrap select {
+    max-width: 160px;
+  }
+}
+
 
 

@@ -1,6 +1,9 @@
 /* Shared sales workspace: compact grid, frozen identity columns and bottom sheets. */
 :root { --primary:#137e68; --primary-hover:#0e6553; --primary-soft:#eaf6f1; --bg:#f6f8fa; }
-.topbar { box-shadow:none; border-bottom:1px solid #dde4e9; }
+.topbar { box-shadow:none; border-bottom:1px solid #dde4e9; gap:16px; padding:10px 20px; }
+.brand { flex-shrink:0; }
+.brand-title { white-space:nowrap; }
+.global-search-wrap { min-width:240px; margin:0 12px; }
 .brand-logo { background:linear-gradient(135deg,#137e68,#229a81); }
 .main-nav { background:#fff; }
 .sheet-container-card { border-radius:10px 10px 0 0; box-shadow:none; overflow:hidden; }
@@ -99,4 +102,10 @@
 .access-utilities { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:18px; padding:16px; border:1px solid #dce4e9; border-radius:10px; background:white; }
 .access-utilities span { color:#64748b; font-size:12px; }
 .pager-info { min-width:190px; font-size:11px; white-space:nowrap; }
-@media(max-width:850px) { .sheet-toolbar{padding:10px}.sheet-tools{padding:8px}.sheet-tip{flex-basis:100%}.sheet-filters{width:100%}.sheet-filters input{width:100%;min-width:0}.sheet-pager{flex-wrap:wrap}.topbar{flex-wrap:wrap}.sheet-tabs-bottom{min-height:44px} }
+@media(max-width:1240px) {
+  .topbar { flex-wrap:wrap; gap:10px 16px; }
+  .brand { order:1; }
+  .topbar-actions { order:2; margin-left:auto; }
+  .global-search-wrap { order:3; flex:1 1 100%!important; min-width:100%!important; max-width:100%!important; margin:4px 0 0; }
+}
+@media(max-width:850px) { .sheet-toolbar{padding:10px}.sheet-tools{padding:8px}.sheet-tip{flex-basis:100%}.sheet-filters{width:100%}.sheet-filters input{width:100%;min-width:0}.sheet-pager{flex-wrap:wrap}.sheet-tabs-bottom{min-height:44px} }
