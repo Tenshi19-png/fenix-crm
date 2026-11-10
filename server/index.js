@@ -364,6 +364,8 @@ const server = http.createServer(async (req, res) => {
       }
 
       const isSuperAdmin = vista === "admin";
+      const isReadOnly = Boolean(session?.readOnly);
+      const canEdit = !isReadOnly && (vista === "admin" || vista === "subadmin");
       const canSeePayments = vista === "admin" || vista === "subadmin";
       const goals = isSuperAdmin ? db.prepare("SELECT * FROM executive_goals ORDER BY nombre ASC").all() : [];
       const accessPerms = isSuperAdmin ? getAccessPermissions() : null;
@@ -374,6 +376,8 @@ const server = http.createServer(async (req, res) => {
         requiresEmailGate: false,
         authorizedEmail: session?.email || reqEmail || "",
         supervisorActivo,
+        isReadOnly,
+        canEdit,
         ...meta,
         companiesVisibles,
         paymentSettings: canSeePayments ? getPaymentSettings() : null,
@@ -413,6 +417,9 @@ const server = http.createServer(async (req, res) => {
         body.overrides &&
         body.overrides.nombre_cliente === "(Doble clic para editar)";
 
+      if (session?.readOnly) {
+        return sendJson(res, 403, { ok: false, message: "Modo Solo Lectura: no tienes permiso para ingresar o modificar ventas." });
+      }
       if (isManualEmptyRow && role !== "admin") {
         return sendJson(res, 403, {
           ok: false,
@@ -533,6 +540,9 @@ const server = http.createServer(async (req, res) => {
     // 7. Editar celda(s) de una venta en vivo (protegido según rol y correo)
     const matchSaleId = pathname.match(/^\/api\/sales\/(\d+)$/);
     if (method === "PATCH" && matchSaleId) {
+      if (session?.readOnly) {
+        return sendJson(res, 403, { ok: false, message: "Modo Solo Lectura: no tienes permiso para modificar ventas." });
+      }
       const id = Number(matchSaleId[1]);
       const patch = await readJsonBody(req);
       try {
@@ -549,10 +559,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (method === "DELETE" && matchSaleId) {
-      if (role !== "admin" && role !== "subadmin") {
+      if (session?.readOnly || (role !== "admin" && role !== "subadmin")) {
         return sendJson(res, 403, {
           ok: false,
-          message: "Solo Administración o Ventas Fenix pueden eliminar ventas.",
+          message: session?.readOnly ? "Modo Solo Lectura: no tienes permiso para eliminar ventas." : "Solo Administración o Ventas Fenix pueden eliminar ventas.",
         });
       }
       const id = Number(matchSaleId[1]);
@@ -562,10 +572,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (method === "POST" && pathname === "/api/sales/bulk-delete") {
-      if (role !== "admin" && role !== "subadmin") {
+      if (session?.readOnly || (role !== "admin" && role !== "subadmin")) {
         return sendJson(res, 403, {
           ok: false,
-          message: "Solo Administración o Ventas Fenix pueden eliminar ventas.",
+          message: session?.readOnly ? "Modo Solo Lectura: no tienes permiso para eliminar ventas." : "Solo Administración o Ventas Fenix pueden eliminar ventas.",
         });
       }
       const body = await readJsonBody(req);

@@ -375,6 +375,8 @@ async function loadBootstrap() {
 
   const { data } = await api(`/api/bootstrap?${qs.toString()}`);
   state.meta = data;
+  state.isReadOnly = Boolean(data.isReadOnly);
+  state.canEdit = data.canEdit !== undefined ? Boolean(data.canEdit) : true;
 
   // --- INICIO DEL FILTRO PARA EL FORMULARIO ---
   // Limpiamos las opciones fantasma del formulario que tengan 0 ventas
@@ -464,9 +466,8 @@ function applyRoleVisibility() {
   adminSwitcher.classList.toggle("hidden", !isRealSuperAdmin);
 
   if (state.vista === "subadmin") {
-    // VENTAS FENIX: Solo Hojas de Ventas, Ventas del Día y Pagos Adicionales.
-    // Edita ventas existentes, pero NO crea compañías, NO agrega/borra filas y NO cambia tarifas/metas.
-    badge.textContent = "Ventas Fenix";
+    // VENTAS FENIX: Hojas de Ventas, Ventas del Día y Pagos Adicionales.
+    badge.textContent = state.isReadOnly ? "Ventas Fenix (Solo Lectura)" : "Ventas Fenix";
     tabPagos.classList.remove("hidden");
     tabSups.classList.add("hidden");
     tabInteg.classList.add("hidden");
@@ -476,7 +477,12 @@ function applyRoleVisibility() {
     btnAddRow.classList.add("hidden");
     btnToggleGoals.classList.add("hidden");
     goalsConfigPanel.classList.add("hidden");
-    permHint.classList.add("hidden");
+    if (state.isReadOnly) {
+      permHint.textContent = "👁️ Modo Solo Lectura (Edición bloqueada)";
+      permHint.classList.remove("hidden");
+    } else {
+      permHint.classList.add("hidden");
+    }
   } else if (state.vista === "moviles") {
     badge.textContent = "Espejo Móviles";
     tabPagos.classList.add("hidden");
@@ -553,8 +559,12 @@ function updateHeaderBrand() {
         brandComp.classList.add("hidden");
       }
     }
-    if (roleBadge) roleBadge.textContent = "Ventas Fenix";
-    document.title = compName ? `${compName} — Ventas Fenix` : "Ventas Fenix — CRM";
+    if (roleBadge) {
+      roleBadge.textContent = state.isReadOnly ? "👁️ Ventas Fenix (Solo Lectura)" : "✏️ Ventas Fenix";
+    }
+    document.title = state.isReadOnly
+      ? (compName ? `${compName} — Ventas Fenix (Solo Lectura)` : "Ventas Fenix (Solo Lectura) — CRM")
+      : (compName ? `${compName} — Ventas Fenix` : "Ventas Fenix — CRM");
   } else if (state.vista === "moviles") {
     if (brandComp) {
       brandComp.innerHTML = "📱 Móviles";
@@ -1204,6 +1214,7 @@ function onPageSizeChange(val) {
 }
 
 function canEditColumnInCurrentView(colKey) {
+  if (state.isReadOnly) return false;
   // Tanto Admin Principal como Segunda Hoja Admin (subadmin) pueden editar ventas existentes
   if (state.vista === "admin" || state.vista === "subadmin") return true;
   if (state.vista === "moviles") {
@@ -1269,8 +1280,8 @@ function renderSheetTable(data) {
   state.selectedRowIds.clear();
   updateBulkDeleteUI();
 
-  const canChangeStatus = state.vista === "admin" || state.vista === "subadmin";
-  const canDeleteRow = state.vista === "admin" || state.vista === "subadmin";
+  const canChangeStatus = !state.isReadOnly && (state.vista === "admin" || state.vista === "subadmin");
+  const canDeleteRow = !state.isReadOnly && (state.vista === "admin" || state.vista === "subadmin");
 
   const thead = document.getElementById("sheetThead");
   thead.innerHTML = `
@@ -2033,14 +2044,14 @@ function renderSupervisorsPanel() {
         </div>
       </div>
 
-      <!-- 2. VENTAS FENIX (EDICIÓN DE VENTAS + PAGOS) -->
-      <div class="integ-card">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+      <!-- 2. VENTAS FENIX (MODIFICAR VS SOLO LECTURA) -->
+      <div class="integ-card" style="grid-column: 1 / -1;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
           <div>
             <span class="sl-badge" style="background:#fef3c7; color:#92400e;">Ventas Fenix</span>
             <h3>📊 Ventas Fenix (/?vista=ventas-fenix)</h3>
-            <p class="integ-desc" style="margin-bottom:6px;">
-              Solo muestra <b>Hojas de Ventas</b>, <b>Ventas del Día</b> y <b>Pagos Adicionales</b>. Permite editar ventas existentes, y eliminarlas para todos. Incluye las vistas de supervisores en solo lectura; no permite abrir el panel maestro ni cambiar tarifas o accesos.
+            <p class="integ-desc" style="margin-bottom:8px;">
+              Acceso a <b>Hojas de Ventas</b>, <b>Ventas del Día</b> y <b>Pagos Adicionales</b> (sin acceso al panel maestro). Aquí decides exactamente qué correos pueden <b>modificar</b> y qué correos solo pueden <b>leer</b>.
             </p>
           </div>
           <div class="sl-actions">
@@ -2048,7 +2059,18 @@ function renderSupervisorsPanel() {
             <button class="btn btn-primary btn-sm" onclick="window.app.copyLink('/?vista=ventas-fenix', 'Link de Ventas Fenix copiado')">Copiar Link</button>
           </div>
         </div>
-        ${renderEmailChipsBox("view", "subadmin", byKey.subadmin || "")}
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:8px;">
+          <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:9px; padding:12px;">
+            <div style="font-size:12.5px; font-weight:700; color:#166534; margin-bottom:2px;">✏️ Pueden MODIFICAR</div>
+            <div style="font-size:11px; color:#15803d; margin-bottom:8px;">Edición de celdas, cambio de estados y eliminación de ventas.</div>
+            ${renderEmailChipsBox("view", "subadmin", byKey.subadmin || "", "Correo que puede modificar...")}
+          </div>
+          <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:9px; padding:12px;">
+            <div style="font-size:12.5px; font-weight:700; color:#334155; margin-bottom:2px;">👁️ SOLO LECTURA (Solo ver)</div>
+            <div style="font-size:11px; color:#64748b; margin-bottom:8px;">Solo pueden consultar las ventas y estados; no pueden editar ni borrar nada.</div>
+            ${renderEmailChipsBox("view", "subadmin_readonly", byKey.subadmin_readonly || "", "Correo solo lectura...")}
+          </div>
+        </div>
       </div>
 
       <!-- 3. HOJA ESPEJO MÓVILES -->

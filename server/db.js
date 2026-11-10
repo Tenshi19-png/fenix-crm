@@ -222,9 +222,10 @@ function initSchema() {
     "INSERT OR IGNORE INTO view_permissions (vista_key, nombre, correos_autorizados) VALUES (?, ?, ?)"
   );
   insViewPerm.run("admin", "👑 Admin Principal (Control Total)", "");
-  insViewPerm.run("subadmin", "📊 Ventas Fenix", "");
+  insViewPerm.run("subadmin", "📊 Ventas Fenix (Modificar)", "");
+  insViewPerm.run("subadmin_readonly", "👁️ Ventas Fenix (Solo Lectura)", "");
   insViewPerm.run("moviles", "📱 Hoja Espejo Móviles (Solo Notas y Seguimiento)", "");
-  db.prepare("UPDATE view_permissions SET nombre = '📊 Ventas Fenix' WHERE vista_key = 'subadmin'").run();
+  db.prepare("UPDATE view_permissions SET nombre = '📊 Ventas Fenix (Modificar)' WHERE vista_key = 'subadmin'").run();
 
   const insSetting = db.prepare("INSERT OR IGNORE INTO payment_settings (clave, valor) VALUES (?, ?)");
   insSetting.run("PAGO_PAQ", 10000);
@@ -1971,9 +1972,13 @@ function verifyViewEmailAccess(vista, supParam = "", emailInput = "", isAdminPre
   }
 
   if (role === "subadmin") {
-    const row = db.prepare("SELECT * FROM view_permissions WHERE vista_key = 'subadmin'").get();
-    const allowedList = [...new Set([...parseEmailList(row ? row.correos_autorizados : ""), ...adminEmails])];
+    const rowWrite = db.prepare("SELECT * FROM view_permissions WHERE vista_key = 'subadmin'").get();
+    const rowReadOnly = db.prepare("SELECT * FROM view_permissions WHERE vista_key = 'subadmin_readonly'").get();
+    const writeList = [...new Set([...parseEmailList(rowWrite ? rowWrite.correos_autorizados : ""), ...adminEmails])];
+    const readOnlyList = parseEmailList(rowReadOnly ? rowReadOnly.correos_autorizados : "");
+    const allowedList = [...new Set([...writeList, ...readOnlyList])];
     const viewTitle = "📊 Ventas Fenix";
+
     if (allowedList.length === 0) {
       return {
         allowed: false,
@@ -1988,7 +1993,14 @@ function verifyViewEmailAccess(vista, supParam = "", emailInput = "", isAdminPre
       return { allowed: false, requiresEmail: true, viewTitle, reason: "Ingresa tu correo electrónico autorizado." };
     }
     if (allowedList.includes(emailNorm)) {
-      return { allowed: true, requiresEmail: true, email: emailNorm, viewTitle };
+      const isReadOnly = !writeList.includes(emailNorm) && readOnlyList.includes(emailNorm);
+      return {
+        allowed: true,
+        requiresEmail: true,
+        email: emailNorm,
+        viewTitle: isReadOnly ? "👁️ Ventas Fenix (Solo Lectura)" : "📊 Ventas Fenix",
+        readOnly: isReadOnly,
+      };
     }
     return {
       allowed: false,

@@ -71,12 +71,14 @@ function principal(req, url) {
     if (session) db.prepare('DELETE FROM active_sessions WHERE token = ?').run(token);
     return null;
   }
+  const verify = verifyViewEmailAccess(session.role, session.sup, session.email, false);
+  session.readOnly = Boolean(verify.readOnly);
   return session;
 }
 function canView(session, role, sup) {
   if (!session || !['admin','subadmin','supervisor','moviles'].includes(role)) return false;
   if (session.role === 'admin') return true;
-  if (session.role === 'subadmin') return role === 'subadmin' || (role === 'supervisor' && !!sup);
+  if (session.role === 'subadmin') return role === 'subadmin' || (!session.readOnly && role === 'supervisor' && !!sup);
   return session.role === role && (role !== 'supervisor' || session.sup === sup || getAllSupervisors().some(s => s.token_acceso === session.sup && s.nombre === sup));
 }
 function issueCredential(emailInput) {
