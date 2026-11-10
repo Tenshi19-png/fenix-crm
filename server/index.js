@@ -772,7 +772,7 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module) {
   if (process.env.NODE_ENV === 'production' && (!process.env.FENIX_ADMIN_EMAIL || String(process.env.FENIX_ADMIN_PASSWORD || '').length < 12 || !process.env.FENIX_DATA_DIR)) {
-    throw new Error('Configura FENIX_ADMIN_EMAIL, FENIX_ADMIN_PASSWORD (12+ caracteres) y FENIX_DATA_DIR en almacenamiento persistente.');
+    console.warn('⚠️ AVISO: Configura FENIX_ADMIN_EMAIL y FENIX_ADMIN_PASSWORD (12+ caracteres) en las Variables de Railway para acceder como Administrador.');
   }
   server.listen(PORT, process.env.HOST || '0.0.0.0', () => {
     console.log(`🚀 Fenix CRM (Admin Principal): http://localhost:${PORT}`);
