@@ -1,0 +1,10 @@
+.git
+data
+public/data
+public/browser-backend.js
+backups
+.preview-data
+release
+node_modules
+.env*
+scripts/update-*.py

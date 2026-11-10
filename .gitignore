@@ -1,0 +1,10 @@
+data/
+public/data/
+backups/
+.preview-data/
+release/
+.env
+.env.*
+!.env.example
+node_modules/
+*.log

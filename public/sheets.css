@@ -1,0 +1,46 @@
+/* Shared sales workspace: compact grid, frozen identity columns and bottom sheets. */
+:root { --primary:#137e68; --primary-hover:#0e6553; --primary-soft:#eaf6f1; --bg:#f6f8fa; }
+.topbar { box-shadow:none; border-bottom:1px solid #dde4e9; }
+.brand-logo { background:linear-gradient(135deg,#137e68,#229a81); }
+.main-nav { background:#fff; }
+.sheet-container-card { border-radius:10px 10px 0 0; box-shadow:none; overflow:hidden; }
+.sheet-toolbar { gap:16px; padding:16px 18px 12px; }
+.sheet-toolbar-left { flex-wrap:wrap; }
+.sheet-title { font-size:18px; letter-spacing:-.35px; }
+.sheet-filters { gap:8px; }
+.sheet-filters input { min-width:220px; }
+.sheet-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 16px; background:#fafcfd; border-block:1px solid #e2e8f0; font-size:12px; }
+.sheet-tools select { padding:5px 8px; border:1px solid #d7dfe5; border-radius:5px; background:white; }
+.sheet-tip { color:#637487; flex:1; }
+#sheetLoadStatus { color:#467265; font-size:11px; }
+.cell-inspector { display:flex; align-items:center; gap:12px; min-height:34px; padding:5px 12px; border-bottom:1px solid #d9e1e7; background:white; }
+#cellAddress { min-width:64px; font:12px monospace; color:#34465a; border-right:1px solid #d9e1e7; }
+.fx { font:italic 16px Georgia,serif; color:#8a98a8; }
+#cellValue { white-space:pre-wrap; overflow-wrap:anywhere; max-height:72px; overflow:auto; font-size:12px; color:#546579; }
+.fenix-grid { font-family:Arial, sans-serif; font-size:12px; border-collapse:separate; border-spacing:0; }
+.fenix-grid th { background:#f3f6f8; color:#3e4f61; height:45px; top:0; z-index:3; }
+.column-letter { display:block; font-size:10px; font-weight:400; color:#7b8997; line-height:14px; }
+.fenix-grid tbody td { height:31px; padding:4px 9px; border-right:1px solid #e6eaee; border-bottom:1px solid #e6eaee; }
+.fenix-grid .data-row td { background:white; }
+.fenix-grid tr.data-row:nth-child(even) td { background:#fafcfd; }
+.fenix-grid tr.data-row:hover td { background:#f0f7f4; }
+.fenix-grid th:first-child,.fenix-grid td.row-actions-cell { position:sticky; left:0; min-width:118px; width:118px!important; z-index:2; background:#f3f6f8!important; border-right:1px solid #ced8df; }
+.fenix-grid th:first-child { z-index:5; }
+.fenix-grid th:nth-child(2),.fenix-grid .data-row td:nth-child(2) { position:sticky; left:118px; z-index:1; border-right:2px solid #d7e0e5; }
+.fenix-grid th:nth-child(2) { z-index:4; }
+.row-number { display:inline-block; min-width:28px; color:#738294; font-size:10px; }
+.fenix-grid td:focus,.fenix-grid td.selected-cell { outline:2px solid #13866a; outline-offset:-2px; background:#ecf8f2!important; }
+.fenix-grid .inline-editor { border:0; border-radius:0; min-width:100%; outline:2px solid #13866a; font:inherit; }
+.month-separator-row td { background:#eef5f2!important; color:#416358; font-size:11px; letter-spacing:.4px; }
+.status-select,.status-readonly-pill { border-radius:5px; font-size:11px; padding:3px 5px; }
+.row-status-instalado .status-select,.row-status-portado .status-select { background:#e8f5ec; color:#286540; }
+.row-status-cancelado .status-select { background:#fcecef; color:#9b3c51; }
+.sheet-tabs-bottom { display:flex; flex-wrap:nowrap; overflow-x:auto; gap:0; padding:0 8px; min-height:47px; border:1px solid #dce4e9; border-top:0; border-radius:0 0 10px 10px; background:#edf2f5; }
+.sheet-tabs-bottom .company-pill { flex-shrink:0; border:0; border-right:1px solid #dce4e9; border-radius:0; background:transparent; padding:12px 14px; box-shadow:none; }
+.sheet-tabs-bottom .company-pill.active { color:#10765c; background:white; box-shadow:inset 0 -3px #13866a; }
+.sheet-tabs-bottom .company-pill-count { font-size:10px; background:#e5ebe9; color:#4c655a; }
+.empty-sheet { padding:44px!important; text-align:center; color:#718096!important; }
+.access-utilities { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:18px; padding:16px; border:1px solid #dce4e9; border-radius:10px; background:white; }
+.access-utilities span { color:#64748b; font-size:12px; }
+.pager-info { min-width:190px; font-size:11px; white-space:nowrap; }
+@media(max-width:850px) { .sheet-toolbar{padding:10px}.sheet-tools{padding:8px}.sheet-tip{flex-basis:100%}.sheet-filters{width:100%}.sheet-filters input{width:100%;min-width:0}.sheet-pager{flex-wrap:wrap}.topbar{flex-wrap:wrap}.sheet-tabs-bottom{min-height:44px} }

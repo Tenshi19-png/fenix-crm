@@ -1,0 +1,14 @@
+services:
+  fenix-crm:
+    build: .
+    container_name: fenix-crm
+    restart: unless-stopped
+    ports:
+      - "3456:3456"
+    environment:
+      - PORT=3456
+      # Opcional: define una API Key si deseas proteger las consultas desde n8n
+      # - N8N_API_KEY=tu_clave_secreta_aqui
+    volumes:
+      - ./data:/app/data
+

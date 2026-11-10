@@ -1,0 +1,5 @@
+from pathlib import Path
+p=Path('public/index.html');s=p.read_text(encoding='utf-8').replace('<link rel="stylesheet" href="/styles.css" />','<link rel="stylesheet" href="/styles.css" />\n  <link rel="stylesheet" href="/sheets.css" />');p.write_text(s,encoding='utf-8')
+p=Path('public/app.js');s=p.read_text(encoding='utf-8').replace('window.innerHeight - top - 14','window.innerHeight - top - 72');p.write_text(s,encoding='utf-8')
+p=Path('server/index.js');s=p.read_text(encoding='utf-8').replace('if (vista === "supervisor") {\n        meta.supervisors', 'if (vista === "supervisor" && session?.role === "supervisor") {\n        meta.supervisors');s=s.replace('supervisors: meta.supervisors,','supervisors: meta.supervisors.map(s => ({nombre:s.nombre})),');p.write_text(s,encoding='utf-8')
+p=Path('server/auth.js');s=p.read_text(encoding='utf-8').replace("return session.role === role && (role !== 'supervisor' || session.sup === sup);", "return session.role === role && (role !== 'supervisor' || session.sup === sup || getAllSupervisors().some(s => s.token_acceso === session.sup && s.nombre === sup));");p.write_text(s,encoding='utf-8')

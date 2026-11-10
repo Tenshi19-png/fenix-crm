@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fenix CRM — Gestión de Ventas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/sheets.css" />
+</head>
+<body>
+  <!-- PANTALLA DE CONTROL DE ACCESO POR CORREO (ESTILO GOOGLE SHEETS) -->
+  <div id="emailGateOverlay" class="email-gate-overlay hidden">
+    <div class="email-gate-card">
+      <div class="email-gate-logo">F</div>
+      <span class="sl-badge" id="gateRoleTag">Acceso Protegido por Correo</span>
+      <h2 id="gateViewTitle">Verificación de Acceso</h2>
+      <p id="gateReasonText" class="email-gate-desc">
+        Ingresa tu correo electrónico autorizado para abrir esta hoja.
+      </p>
+
+      <form id="emailGateForm" onsubmit="window.app.submitEmailGate(event)">
+        <label class="field-label" for="gateEmailInput">Correo electrónico</label>
+        <input
+          type="email"
+          id="gateEmailInput"
+          placeholder="nombre@gmail.com"
+          required
+          autocomplete="email"
+        />
+        <label class="field-label" for="gatePassword" style="margin-top:12px">Clave de acceso</label>
+        <input id="gatePassword" type="password" required autocomplete="current-password" placeholder="Tu clave personal" />
+        <div id="gateErrorBanner" class="alert-banner alert-error hidden" style="margin-top:10px;"></div>
+        <button type="submit" class="btn btn-primary btn-lg" id="btnGateSubmit" style="width:100%; margin-top:14px;">
+          Ingresar a la Hoja
+        </button>
+      </form>
+      <div class="email-gate-footer">
+        🔒 Solo los correos autorizados por el Administrador Principal en <b>Accesos y Supervisores</b> pueden ver esta hoja.
+      </div>
+    </div>
+  </div>
+
+  <!-- BARRA SUPERIOR MINIMALISTA -->
+  <header class="topbar" id="topbar">
+    <div class="brand" onclick="window.app.onBrandClick()">
+      <div class="brand-logo">F</div>
+      <div>
+        <div class="brand-title">
+          Fenix <span id="roleBadge" class="role-badge">Principal</span>
+        </div>
+        <div class="brand-sub" id="liveStatus">
+          <span class="dot-live"></span> En línea
+        </div>
+      </div>
+    </div>
+
+    <div class="global-search-wrap" id="globalSearchWrap">
+      <svg class="search-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input
+        type="text"
+        id="globalSearchInput"
+        placeholder="Buscar por RUT, cliente, dirección, teléfono o ejecutiva..."
+        autocomplete="off"
+      />
+      <kbd class="kbd-hint">Enter</kbd>
+    </div>
+
+    <div class="topbar-actions" id="topbarActions">
+      <div id="currentEmailChip" class="email-session-chip hidden">
+        <span id="currentEmailText"></span>
+        <button type="button" class="email-logout-btn" onclick="window.app.logoutEmailSession()" title="Cambiar correo">
+          Salir
+        </button>
+      </div>
+
+      <div class="view-switcher-wrap" id="adminViewSwitcher">
+        <span>Vista:</span>
+        <select id="viewSelector" title="Previsualizar perfiles conectados"></select>
+      </div>
+
+      <button
+        class="btn btn-ghost-top btn-sm"
+        id="btnOpenFormStandalone"
+        onclick="window.open('/?vista=formulario', '_blank')"
+        title="Abrir el Formulario aislado para ejecutivos"
+      >
+        📝 Formulario ↗
+      </button>
+
+      <button
+        class="btn btn-ghost-top btn-sm"
+        id="btnQuickImport"
+        onclick="window.app.switchTab('integraciones')"
+        title="Importar desde Google Sheets o configurar n8n"
+      >
+        🔄 Sincronizar Sheets
+      </button>
+
+      <button class="btn btn-accent btn-sm" id="btnNewCompany" onclick="window.app.openNewCompanyModal()">
+        + Compañía Nueva
+      </button>
+    </div>
+  </header>
+
+  <!-- NAVEGACIÓN DE HOJAS (EL FORMULARIO ESTÁ 100% SEPARADO EN /formulario) -->
+  <nav class="main-nav" id="mainNav">
+    <button class="nav-tab active" data-tab="hojas" id="navTabHojas" onclick="window.app.switchTab('hojas')">
+      Hojas de Ventas
+    </button>
+    <button class="nav-tab" data-tab="resumen" id="navTabResumen" onclick="window.app.switchTab('resumen')">
+      Ventas del Día
+    </button>
+    <button class="nav-tab" data-tab="pagos" id="navTabPagos" onclick="window.app.switchTab('pagos')">
+      Pagos Adicionales
+    </button>
+    <button class="nav-tab" data-tab="supervisores" id="navTabSups" onclick="window.app.switchTab('supervisores')">
+      Accesos y Supervisores
+    </button>
+    <button class="nav-tab" data-tab="integraciones" id="navTabIntegraciones" onclick="window.app.switchTab('integraciones')">
+      n8n · Telegram · Sheets
+    </button>
+  </nav>
+
+  <!-- CONTENEDOR PRINCIPAL -->
+  <main class="workspace" id="mainWorkspace">
+    <!-- ==================== 1. FORMULARIO AISLADO (/formulario) ==================== -->
+    <section id="tab-formulario" class="tab-panel hidden">
+      <div class="form-layout">
+        <div class="form-card">
+          <div class="form-card-header">
+            <div>
+              <h2>Ingreso de Ventas</h2>
+              <p>Elige la compañía, su modalidad y pega la ficha. Los datos se extraen y validan al instante.</p>
+            </div>
+          </div>
+
+          <form id="fenixSaleForm" onsubmit="window.app.handleFormSubmit(event)">
+            <!-- PASO 1: MARCA AGRUPADA -->
+            <div class="field-block">
+              <label class="field-label">1. Compañía <span class="req">*</span></label>
+              <div id="brandGrid" class="brand-grid"></div>
+            </div>
+
+            <!-- SUB-OPCIONES DE LA MARCA SELECCIONADA -->
+            <div id="brandVariantsBox" class="variants-box hidden">
+              <label class="field-label" id="brandVariantsLabel">Modalidad / Tipo de venta <span class="req">*</span></label>
+              <div id="brandVariantsPills" class="choice-pills"></div>
+
+              <!-- Sub-condición exclusiva para Movistar Instalación sin Tenencia (Click Sí/No + Captura) -->
+              <div id="condSinTenenciaClick" class="sub-conditional hidden">
+                <label class="field-label">¿La instalación sin tenencia fue completa por Click? <span class="req">*</span></label>
+                <div class="choice-pills" id="clickChoices">
+                  <button type="button" class="choice-pill" data-val="Sí" onclick="window.app.selectClickOption('Sí')">
+                    Sí (Adjuntar captura)
+                  </button>
+                  <button type="button" class="choice-pill" data-val="No" onclick="window.app.selectClickOption('No')">
+                    No
+                  </button>
+                </div>
+
+                <div id="condClickImage" class="hidden" style="margin-top:10px;">
+                  <div class="dropzone" id="imageDropzone" onclick="document.getElementById('clickImageInput').click()">
+                    <input type="file" id="clickImageInput" accept="image/*" class="hidden" onchange="window.app.handleImageFile(event)" />
+                    <div id="dropzonePrompt">Haz clic para subir imagen o presiona <b>Ctrl + V</b> para pegar captura</div>
+                    <img id="clickImagePreview" class="image-preview hidden" alt="Vista previa captura" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- PASO 2: SUPERVISOR, EJECUTIVO Y FECHA -->
+            <div class="form-row-3">
+              <div class="field-block">
+                <label class="field-label" for="formSupervisor">2. Supervisor <span class="req">*</span></label>
+                <select id="formSupervisor" required onchange="window.app.onFormSupervisorChange()"></select>
+                <input
+                  type="text"
+                  id="formSupervisorOtro"
+                  class="hidden"
+                  style="margin-top:6px;"
+                  placeholder="Nombre del supervisor..."
+                />
+              </div>
+
+              <div class="field-block">
+                <label class="field-label" for="formEjecutivo">3. Ejecutivo/a <span class="req">*</span></label>
+                <input
+                  type="text"
+                  id="formEjecutivo"
+                  list="ejecutivosDatalist"
+                  placeholder="Ej: Emily León"
+                  required
+                  autocomplete="off"
+                />
+                <datalist id="ejecutivosDatalist"></datalist>
+                <div id="suggestedExecChips" class="exec-chips"></div>
+              </div>
+
+              <div class="field-block">
+                <label class="field-label" for="formFecha">
+                  Fecha de venta <span class="hint-inline">(editable)</span>
+                </label>
+                <input type="date" id="formFecha" onchange="window.app.triggerFichaPreview()" />
+              </div>
+            </div>
+
+            <div class="remember-row">
+              <label class="chk-inline">
+                <input type="checkbox" id="chkRememberExec" checked />
+                Recordar mi Supervisor y Nombre Ejecutivo en este navegador
+              </label>
+            </div>
+
+            <!-- PASO 3: FICHA -->
+            <div class="field-block">
+              <div class="ficha-label-row">
+                <label class="field-label" for="formFicha">4. Ficha de la venta <span class="req">*</span></label>
+                <div style="display:flex; gap:10px;">
+                  <button type="button" class="btn-link" onclick="window.app.fillSampleFicha(false)">Ejemplo Fibra</button>
+                  <button type="button" class="btn-link" onclick="window.app.fillSampleFicha(true)">Ejemplo Móvil + Adicionales</button>
+                </div>
+              </div>
+              <textarea
+                id="formFicha"
+                rows="9"
+                placeholder="Pega aquí la ficha completa (RUT, Nombre Cliente, Dirección de Instalación, Comuna, Teléfono Titular / Adicionales, Plan, Cód. Biometría)..."
+                oninput="window.app.triggerFichaPreview()"
+              ></textarea>
+            </div>
+
+            <div id="formDuplicateBanner" class="alert-banner alert-warn hidden"></div>
+            <div id="formFeedbackBanner" class="alert-banner hidden"></div>
+
+            <div class="form-submit-row">
+              <button type="button" class="btn btn-outline" onclick="window.app.clearSaleForm()">Limpiar</button>
+              <button type="submit" class="btn btn-primary btn-lg" id="btnSubmitSale">
+                Registrar Venta
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- COLUMNA DERECHA: LECTURA INTELIGENTE EN VIVO -->
+        <aside class="preview-card">
+          <div class="preview-header">
+            <div class="preview-title-row">
+              <h3>⚡ Lectura Inteligente en Vivo</h3>
+              <span id="mobileLinesBadge" class="mini-tag mini-tag-blue hidden">Titular: 0 · Adic: 0</span>
+            </div>
+            <p>Así guardará Fenix los datos en la hoja destino. Puedes completar o corregir cualquier campo aquí antes de enviar:</p>
+          </div>
+
+          <div class="dest-badge-box">
+            <span>Hoja destino</span>
+            <strong id="previewDestSheet">Selecciona compañía</strong>
+          </div>
+
+          <div class="preview-fields">
+            <div class="p-field-2">
+              <div class="p-field">
+                <label>RUT Cliente</label>
+                <input type="text" id="ov_rut" placeholder="12345678-9" />
+              </div>
+              <div class="p-field">
+                <label>Cód. Biometría / ID Orden</label>
+                <input type="text" id="ov_id_orden" placeholder="Opcional" />
+              </div>
+            </div>
+
+            <div class="p-field">
+              <label>Nombre Cliente</label>
+              <input type="text" id="ov_nombre_cliente" placeholder="Nombre completo..." />
+            </div>
+
+            <div class="p-field">
+              <label>
+                Dirección de Instalación
+                <span id="dirSourceTag" class="mini-tag hidden"></span>
+              </label>
+              <input type="text" id="ov_direccion" placeholder="Calle y numeración..." />
+            </div>
+
+            <!-- MODO HOGAR / FIBRA: Comuna + Teléfono general -->
+            <div id="previewPhoneFijoRow" class="p-field-2">
+              <div class="p-field">
+                <label>Comuna</label>
+                <input type="text" id="ov_comuna" placeholder="Comuna..." />
+              </div>
+              <div class="p-field">
+                <label>Teléfono(s) Contacto</label>
+                <input type="text" id="ov_telefono" placeholder="987654321" />
+              </div>
+            </div>
+
+            <!-- MODO MÓVIL: Número Principal (Titular) + Números Adicionales explícitos -->
+            <div id="previewPhoneMovilBox" class="mobile-phones-box hidden">
+              <div class="p-field-2">
+                <div class="p-field">
+                  <label>📱 Número Principal (Titular)</label>
+                  <input type="text" id="ov_numero_principal" placeholder="Ej: 985003215" />
+                </div>
+                <div class="p-field">
+                  <label>Comuna</label>
+                  <input type="text" id="ov_comuna_movil" placeholder="Comuna..." oninput="window.app.syncComunaInputs(this.value)" />
+                </div>
+              </div>
+              <div class="p-field" style="margin-top:8px;">
+                <label>
+                  <span>➕ Números Adicionales</span>
+                  <span class="hint-inline">Separa varios con coma o espacio</span>
+                </label>
+                <input
+                  type="text"
+                  id="ov_adicional"
+                  placeholder="Ej: 912345678 | 987654321 (dejar vacío si no lleva adicionales)"
+                />
+              </div>
+            </div>
+
+            <div class="p-field-2">
+              <div class="p-field">
+                <label>Correo Electrónico</label>
+                <input type="text" id="ov_correo" placeholder="cliente@correo.cl" />
+              </div>
+              <div class="p-field">
+                <label>Servicio / Plan Solicitado</label>
+                <input type="text" id="ov_servicio" placeholder="Plan o velocidad..." />
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ==================== 2. HOJAS POR COMPAÑÍA ==================== -->
+    <section id="tab-hojas" class="tab-panel">
+
+
+      <div class="sheet-container-card">
+        <div class="sheet-toolbar">
+          <div class="sheet-toolbar-left">
+            <h2 id="activeSheetTitle" class="sheet-title">Cargando...</h2>
+            <span id="activeSheetCount" class="badge-count">0 filas</span>
+            <span id="permissionModeHint" class="perm-pill hidden"></span>
+          </div>
+
+          <div class="sheet-filters">
+            <input
+              type="text"
+              id="sheetSearchInput"
+              placeholder="Filtrar por RUT, cliente, dirección, teléfono o ejecutiva..."
+              oninput="window.app.debouncedLoadSheet()"
+            />
+            <select id="sheetMonthFilter" aria-label="Mes" onchange="window.app.debouncedLoadSheet()">
+              <option value="all">Todos los meses</option>
+              <option value="0">Enero</option>
+              <option value="1">Febrero</option>
+              <option value="2">Marzo</option>
+              <option value="3">Abril</option>
+              <option value="4">Mayo</option>
+              <option value="5">Junio</option>
+              <option value="6">Julio</option>
+              <option value="7">Agosto</option>
+              <option value="8">Septiembre</option>
+              <option value="9">Octubre</option>
+              <option value="10">Noviembre</option>
+              <option value="11">Diciembre</option>
+            </select>
+            <select id="sheetYearFilter" aria-label="Año" onchange="window.app.debouncedLoadSheet()">
+              <option value="all">Todos los años</option>
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+            </select>
+            <select id="sheetStatusFilter" aria-label="Estado" onchange="window.app.debouncedLoadSheet()">
+              <option value="all">Todos los estados</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="instalado">Instalado</option>
+              <option value="portado">Portado</option>
+              <option value="cancelado">Cancelado</option>
+              <option value="no realizado">No Realizado</option>
+            </select>
+            <button
+              class="btn btn-danger btn-sm hidden"
+              id="btnBulkDeleteRows"
+              onclick="window.app.confirmBulkDeleteRows()"
+              title="Eliminar todas las filas marcadas con el check"
+            >
+              🗑️ Eliminar (<span id="bulkDeleteCount">0</span>)
+            </button>
+            <div class="sheet-pager" id="sheetPager">
+              <button type="button" class="btn btn-outline btn-sm" id="btnPrevPage" onclick="window.app.changeSheetPage(-1)" title="Página anterior">◀</button>
+              <span id="sheetPageInfo" class="pager-info">1 / 1</span>
+              <button type="button" class="btn btn-outline btn-sm" id="btnNextPage" onclick="window.app.changeSheetPage(1)" title="Página siguiente">▶</button>
+              <select id="sheetPageSize" onchange="window.app.onPageSizeChange(this.value)" title="Cantidad de filas visibles por página">
+                <option value="150" selected>150 filas</option>
+                <option value="400">400 filas</option>
+                <option value="1000">1.000 filas</option>
+              </select>
+            </div>
+            <button class="btn btn-outline btn-sm" id="btnAddManualRow" onclick="window.app.addManualRow()">
+              + Fila
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="window.app.exportActiveSheetCsv()">
+              Exportar CSV
+            </button>
+          </div>
+        </div>
+
+        <div class="sheet-tools">
+          <span class="sheet-tip">Doble clic o Enter para editar · Flechas para moverte · Esc para cancelar</span>
+          <label>Ordenar <select id="sheetSort" onchange="window.app.changeSheetSort(this.value)"><option value="fecha_orden:desc">Más recientes</option><option value="fecha_orden:asc">Más antiguas</option><option value="ejecutivo:asc">Ejecutivo A–Z</option><option value="nombre_cliente:asc">Cliente A–Z</option><option value="estado:asc">Estado A–Z</option></select></label>
+          <button class="btn btn-outline btn-sm" onclick="window.app.clearSheetFilters()">Limpiar filtros</button>
+          <button class="btn btn-outline btn-sm" onclick="window.app.loadActiveSheet()">Actualizar</button>
+          <span id="sheetLoadStatus" role="status">Conectando…</span>
+        </div>
+        <div class="cell-inspector"><span id="cellAddress">Celda</span><span class="fx">fx</span><span id="cellValue">Selecciona una celda para ver su contenido completo</span></div>
+        <div class="grid-wrapper" id="sheetGridWrapper">
+          <table class="fenix-grid" id="sheetGrid">
+            <thead id="sheetThead"></thead>
+            <tbody id="sheetTbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="company-tabs-bar sheet-tabs-bottom" id="companyTabsBar" aria-label="Hojas de ventas"></div>
+    </section>
+    <!-- ==================== 3. VENTAS DEL DÍA ==================== -->
+    <section id="tab-resumen" class="tab-panel hidden">
+      <div class="panel-header-bar">
+        <div>
+          <h2 id="dailyTitle">Ventas del Día</h2>
+          <p>Resumen automático por supervisor y campaña en tiempo real.</p>
+        </div>
+        <div class="daily-controls">
+          <input type="date" id="dailyDatePicker" onchange="window.app.loadDailySummary()" />
+          <button class="btn btn-outline btn-sm" onclick="window.app.setDailyToday()">Hoy</button>
+        </div>
+      </div>
+
+      <div id="recentDatesBar" class="recent-dates-bar"></div>
+      <div id="dailySummaryContainer" class="daily-summary-container"></div>
+    </section>
+
+    <!-- ==================== 4. PAGOS ADICIONALES ==================== -->
+    <section id="tab-pagos" class="tab-panel hidden">
+      <div class="panel-header-bar">
+        <div>
+          <h2 id="paymentsTitle">Pagos Adicionales</h2>
+          <p>Cálculo exacto sobre ventas Instaladas / Portadas (Paq, Fib, C/V, E.M. Tit/Adi, Pyme, P.M. Tit/Adi, A&A y compañías nuevas).</p>
+        </div>
+        <div class="daily-controls">
+          <select id="payMonthSelect" onchange="window.app.loadPayments()">
+            <option value="0">Enero</option>
+            <option value="1">Febrero</option>
+            <option value="2">Marzo</option>
+            <option value="3">Abril</option>
+            <option value="4">Mayo</option>
+            <option value="5">Junio</option>
+            <option value="6">Julio</option>
+            <option value="7">Agosto</option>
+            <option value="8">Septiembre</option>
+            <option value="9">Octubre</option>
+            <option value="10">Noviembre</option>
+            <option value="11">Diciembre</option>
+          </select>
+          <select id="payYearSelect" onchange="window.app.loadPayments()">
+            <option value="2026">2026</option>
+            <option value="2025">2025</option>
+          </select>
+          <button class="btn btn-outline btn-sm" id="btnToggleGoals" onclick="window.app.toggleGoalsConfig()">
+            Tarifas y Mínimos
+          </button>
+        </div>
+      </div>
+
+      <div id="goalsConfigPanel" class="config-drawer hidden">
+        <div class="tarifas-box">
+          <h4>Comisión por venta sobre el mínimo</h4>
+          <div class="tarifas-inputs">
+            <div>
+              <label>Paquetización ($)</label>
+              <input type="number" id="cfgPagoPaq" step="500" />
+            </div>
+            <div>
+              <label>Fibra Hogar ($)</label>
+              <input type="number" id="cfgPagoFibra" step="500" />
+            </div>
+            <div>
+              <label>Claro / VTR ($)</label>
+              <input type="number" id="cfgPagoClaro" step="500" />
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="window.app.saveTarifas()">Guardar</button>
+          </div>
+        </div>
+        <div class="goals-box">
+          <h4>Mínimo de ventas por ejecutiva (Configuración Adicional)</h4>
+          <div id="goalsListGrid" class="goals-grid"></div>
+        </div>
+      </div>
+
+      <div id="paymentsSummaryBanner" class="payments-kpi-bar"></div>
+      <div id="paymentsCardsGrid" class="payments-cards-grid"></div>
+    </section>
+
+    <!-- ==================== 5. ACCESOS POR CORREO Y SUPERVISORES ==================== -->
+    <section id="tab-supervisores" class="tab-panel hidden">
+      <div class="panel-header-bar">
+        <div>
+          <h2>Enlaces de Acceso y Permisos por Correo (Estilo Google Sheets)</h2>
+          <p>Elige exactamente qué correos electrónicos pueden abrir Ventas Fenix, Espejo Móviles y cada Hoja de Supervisor.</p>
+        </div>
+      </div>
+
+      <!-- TARJETAS DE VISTAS PRINCIPALES (FORMULARIO, SEGUNDA HOJA ADMIN, MÓVILES, ADMIN PRINCIPAL) -->
+      <div class="access-utilities"><button class="btn btn-outline" onclick="window.app.downloadBackup()">Descargar respaldo completo</button><button class="btn btn-outline" onclick="window.app.createAccessKey()">Generar clave personal</button><span>Agrega primero el correo a su acceso. La clave se muestra una sola vez.</span></div>
+      <div id="generalViewsAccessGrid" class="special-links-grid"></div>
+
+      <div class="panel-header-bar" style="margin-top:22px;">
+        <div>
+          <h2>Hojas Exclusivas por Supervisor (Solo Lectura + Acceso por Correo)</h2>
+          <p>Agrega los correos autorizados de cada supervisor. Si intentan entrar con otro correo no autorizado, el sistema bloqueará el acceso.</p>
+        </div>
+      </div>
+
+      <div class="add-sup-bar">
+        <input type="text" id="newSupName" placeholder="Nombre del nuevo supervisor..." />
+        <input type="text" id="newSupAliases" placeholder="Alias opcionales separados por coma..." />
+        <input type="text" id="newSupEmails" placeholder="Correo(s) autorizado(s) separados por coma..." />
+        <button class="btn btn-primary" onclick="window.app.addSupervisor()">Agregar Supervisor</button>
+      </div>
+
+      <div id="supervisorsGrid" class="supervisors-grid"></div>
+    </section>
+
+    <!-- ==================== 6. N8N, TELEGRAM Y SINCRONIZACIÓN GOOGLE SHEETS ==================== -->
+    <section id="tab-integraciones" class="tab-panel hidden">
+      <div class="integrations-grid">
+        <!-- BLOQUE A: IMPORTACIÓN / SINCRONIZACIÓN 100% DESDE GOOGLE SHEETS -->
+        <div class="integ-card">
+          <span class="sl-badge">Sincronización Google Sheets</span>
+          <h3>Traer el 100% de tus ventas al día desde Google Sheets</h3>
+          <p class="integ-desc">
+            Ya dejamos instalado en tu Google Sheets el menú <b>🟢 Herramientas Fenix → 🔥 Exportar / Sincronizar TODO a Fenix CRM</b> para enviar todo en 1 clic. También puedes subir aquí directamente el archivo Excel (<b>Archivo → Descargar → Microsoft Excel .xlsx</b>) o respaldo <b>.json</b>:
+          </p>
+
+          <div class="dropzone" id="sheetsImportDropzone" onclick="document.getElementById('sheetsFileInput').click()">
+            <input
+              type="file"
+              id="sheetsFileInput"
+              accept=".xlsx,.json"
+              class="hidden"
+              onchange="window.app.handleSheetsImportFile(event)"
+            />
+            <div id="sheetsImportStatus">
+              📥 <b>Haz clic aquí o arrastra tu archivo .xlsx o .json</b> descargado de Google Sheets<br />
+              <span style="font-size:11.5px; color:#64748b;">Importa automáticamente todas las hojas (incluyendo Octubre y Noviembre), supervisores, metas, A&A Sales y Pyme Móvil.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BLOQUE B: CONEXIÓN N8N + BOT DE TELEGRAM -->
+        <div class="integ-card">
+          <span class="sl-badge sl-badge-movil">API lista para n8n + Telegram</span>
+          <h3>Conecta tu flujo de n8n y Bot de Telegram en segundos</h3>
+          <p class="integ-desc">
+            Estos endpoints devuelven tanto los datos estructurados en JSON como el campo <code>texto_telegram</code> ya formateado con emojis listo para enviar al nodo de Telegram en n8n:
+          </p>
+
+          <div class="endpoint-list">
+            <div class="endpoint-item">
+              <div>
+                <div class="ep-title">1. Resumen de Ventas del Día (para Telegram)</div>
+                <code id="epUrlDaily">/api/n8n/ventas-del-dia</code>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="window.app.copyApiEndpoint('/api/n8n/ventas-del-dia')">Copiar URL</button>
+            </div>
+
+            <div class="endpoint-item">
+              <div>
+                <div class="ep-title">2. Consultar ventas por fechas y hoja</div>
+                <code id="epUrlRange">/api/n8n/ventas?desde=01/11/2026&amp;hasta=08/11/2026&amp;hoja=todas</code>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="window.app.copyApiEndpoint('/api/n8n/ventas?desde=01/11/2026&hasta=08/11/2026&hoja=todas')">Copiar URL</button>
+            </div>
+
+            <div class="endpoint-item">
+              <div>
+                <div class="ep-title">3. Estado conversacional del Bot (reemplaza hoja auxiliar)</div>
+                <code>GET / POST /api/n8n/sesion?telefono=569...</code>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="window.app.copyApiEndpoint('/api/n8n/sesion')">Copiar URL</button>
+            </div>
+
+            <div class="endpoint-item">
+              <div>
+                <div class="ep-title">4. Lista dinámica de hojas y supervisores</div>
+                <code>/api/n8n/hojas</code>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="window.app.copyApiEndpoint('/api/n8n/hojas')">Copiar URL</button>
+            </div>
+          </div>
+
+          <div class="n8n-tester">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <strong style="font-size:12.5px;">Vista previa del mensaje para Telegram:</strong>
+              <button class="btn btn-primary btn-sm" onclick="window.app.testN8nTelegramPreview()">Probar consulta en vivo</button>
+            </div>
+            <pre id="n8nTelegramPreview" class="tg-preview-box">Haz clic en "Probar consulta en vivo" para ver cómo responde la API a n8n...</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: CREAR COMPAÑÍA NUEVA -->
+  <div id="modalNewCompany" class="modal-backdrop hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Crear Hoja para Compañía Nueva</h3>
+        <button class="modal-close" onclick="window.app.closeModals()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-sub">
+          Aparecerá automáticamente agrupada en el Formulario, en Hojas de Ventas (con separadores mensuales), en Ventas del Día y en Pagos Adicionales con sus iniciales.
+        </p>
+        <div class="field-block">
+          <label class="field-label">Nombre de la compañía <span class="req">*</span></label>
+          <input type="text" id="ncNombre" placeholder="Ej: Wom Móvil o Mundo Pacífico" oninput="window.app.suggestCompanyInitials()" />
+        </div>
+        <div class="form-row-2">
+          <div class="field-block">
+            <label class="field-label">Iniciales en Pagos Adicionales <span class="req">*</span></label>
+            <input type="text" id="ncIniciales" maxlength="8" placeholder="Ej: W.M." />
+          </div>
+          <div class="field-block">
+            <label class="field-label">Nombre de la Hoja</label>
+            <input type="text" id="ncHoja" placeholder="(Igual al nombre)" />
+          </div>
+        </div>
+        <div class="field-block">
+          <label class="field-label">¿A qué hoja existente quieres que se parezca? <span class="req">*</span></label>
+          <select id="ncPlantilla" onchange="window.app.onTemplateCompanyChange()"></select>
+        </div>
+        <div class="remember-row">
+          <label class="chk-inline">
+            <input type="checkbox" id="ncEspejoMovil" />
+            Mostrar también en el enlace de Espejo Móviles
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="window.app.closeModals()">Cancelar</button>
+        <button class="btn btn-primary" onclick="window.app.submitNewCompany()">Crear Compañía</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: BUSCADOR GLOBAL / DETALLE DE FICHA -->
+  <div id="modalSearch" class="modal-backdrop hidden">
+    <div class="modal-box modal-lg">
+      <div class="modal-header">
+        <h3 id="modalSearchTitle">Detalle</h3>
+        <button class="modal-close" onclick="window.app.closeModals()">✕</button>
+      </div>
+      <div class="modal-body" id="modalSearchBody"></div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+  <script src="/connection.js"></script>
+  <script src="/app.js"></script>
+  <script src="/workspace.js"></script>
+</body>
+</html>

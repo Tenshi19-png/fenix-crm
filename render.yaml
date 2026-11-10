@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: fenix-crm
+    runtime: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 3456
+      - key: NODE_ENV
+        value: production
+      - key: FENIX_DATA_DIR
+        value: /app/data
+      - key: FENIX_ADMIN_EMAIL
+        sync: false
+      - key: FENIX_ADMIN_PASSWORD
+        sync: false
+      - key: FENIX_ALLOWED_ORIGINS
+        value: https://tenshi19xd-fenix.static.hf.space
+    disk:
+      name: fenix-data
+      mountPath: /app/data
+      sizeGB: 1
+

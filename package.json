@@ -1,0 +1,15 @@
+{
+  "name": "fenix-crm",
+  "version": "1.0.0",
+  "description": "Plataforma integral Fenix: Formulario inteligente de ventas, Hojas editables por compañía, Ventas del Día, Pagos Adicionales y Vistas en vivo para Supervisores y Móviles.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "seed": "node server/seed.js --reset",
+    "test": "node server/test-central.js",
+    "preview": "node scripts/preview.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
