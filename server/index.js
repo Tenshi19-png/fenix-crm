@@ -786,9 +786,10 @@ const server = http.createServer(async (req, res) => {
       if (method === "POST" && (pathname === "/api/n8n/registrar-venta" || pathname === "/api/n8n/sales")) {
         const body = await readJsonBody(req);
 
-        // Si la venta ya fue originada en Fenix CRM, no la duplicamos
-        if (body.source === "fenix_crm") {
-          return sendJson(res, 200, { ok: true, source: "fenix_crm", message: "Venta originada en CRM, sincronizada." });
+        // Si la venta ya fue originada en Fenix CRM o es una notificación de WhatsApp / Pedro Ballesteros, no se reinserta en el CRM
+        const supCheck = String(body.supervisor || body.datosVenta?.supervisor || "").toLowerCase();
+        if (body.source === "fenix_crm" || supCheck.includes("pedro") || supCheck.includes("ballesteros")) {
+          return sendJson(res, 200, { ok: true, ignored: true, message: "Venta ya registrada o notificación de WhatsApp; no se duplica en CRM." });
         }
 
         let operador = body.operador || body.compania || body.datosVenta?.compania || "";
