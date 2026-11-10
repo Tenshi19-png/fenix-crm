@@ -570,6 +570,7 @@ function setupSSE() {
 }
 function scheduleSharedRefresh() {
   clearTimeout(state.sharedRefreshTimer);
+  clearSheetCache();
   state.sharedRefreshTimer = setTimeout(async () => {
     if (state.editingCell) { state.pendingSharedRefresh = true; return; }
     try { await loadBootstrap(); refreshCurrentTab(); }
@@ -1070,7 +1071,7 @@ function renderCompanyTabs() {
     .map((c) => {
       const active = c.slug === state.activeCompanySlug ? "active" : "";
       return `
-        <button class="company-pill ${active}" onclick="window.app.selectCompanyTab('${esc(c.slug)}')">
+        <button class="company-pill ${active}" data-slug="${esc(c.slug)}" onclick="window.app.selectCompanyTab('${esc(c.slug)}')">
           <span class="company-pill-dot" style="background:${esc(c.color)}"></span>
           <span>${esc(c.hoja)}</span>
           <span class="company-pill-count">${c.totalVentas}</span>
@@ -1081,9 +1082,15 @@ function renderCompanyTabs() {
 }
 
 function selectCompanyTab(slug) {
+  if (state.activeCompanySlug === slug) return;
   state.activeCompanySlug = slug;
   state.sheetPage = 1;
-  renderCompanyTabs();
+  const bar = document.getElementById("companyTabsBar");
+  if (bar) {
+    bar.querySelectorAll(".company-pill").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.slug === slug);
+    });
+  }
   loadActiveSheet();
 }
 
@@ -1115,6 +1122,12 @@ function canEditColumnInCurrentView(colKey) {
   return false; // supervisor = solo lectura estricta
 }
 
+const sheetCache = new Map();
+
+function clearSheetCache() {
+  sheetCache.clear();
+}
+
 async function loadActiveSheet() {
   if (state.editingCell) { state.pendingSharedRefresh = true; return; }
   try { await loadActiveSheetData(); }
@@ -1123,7 +1136,7 @@ async function loadActiveSheet() {
 async function loadActiveSheetData() {
   if (!state.activeCompanySlug) { document.getElementById('sheetTbody').innerHTML = ''; return; }
   const requestId = state.sheetRequestId = (state.sheetRequestId || 0) + 1;
-  document.getElementById('sheetLoadStatus').textContent = 'Cargando ventas…';
+  const tbody = document.getElementById('sheetTbody');
   const qs = new URLSearchParams();
   qs.set('page', state.sheetPage);
   qs.set('pageSize', state.sheetPageSize);
@@ -1136,8 +1149,23 @@ async function loadActiveSheetData() {
   qs.set("estado", document.getElementById("sheetStatusFilter").value);
   qs.set("q", document.getElementById("sheetSearchInput").value.trim());
 
+  const cacheKey = `${state.activeCompanySlug}:${qs.toString()}`;
+  const cached = sheetCache.get(cacheKey);
+  if (cached) {
+    renderSheetTable(cached);
+  } else if (tbody) {
+    tbody.style.opacity = "0.45";
+    document.getElementById('sheetLoadStatus').textContent = 'Cargando ventas…';
+  }
+
   const { data } = await api(`/api/companies/${state.activeCompanySlug}/sales?${qs.toString()}`);
   if (requestId !== state.sheetRequestId) return;
+  sheetCache.set(cacheKey, data);
+  if (tbody) tbody.style.opacity = "1";
+  renderSheetTable(data);
+}
+
+function renderSheetTable(data) {
   state.sheetPage = data.page;
   state.totalPages = data.totalPages;
   state.sheetColumns = data.company.columnas;
@@ -1187,6 +1215,7 @@ async function loadActiveSheetData() {
   state.currentSheetSalesMap.clear();
   if (data.sales.length === 0) {
     tbody.innerHTML = `<tr><td colspan="${cols.length + 1}" class="empty-sheet">No hay ventas con estos filtros. Prueba otro mes o limpia los filtros.</td></tr>`;
+    tbody.style.opacity = "1";
     fitGridHeight(); return;
   }
   let html = "";
@@ -1267,6 +1296,7 @@ async function loadActiveSheetData() {
   }
 
   tbody.innerHTML = html;
+  tbody.style.opacity = "1";
   state.currentSheetSalesMap = new Map(visibleSales.map((s) => [s.id, s]));
   fitGridHeight();
 }

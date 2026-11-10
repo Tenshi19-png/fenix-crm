@@ -35,8 +35,12 @@ if (!process.env.FENIX_IS_TEST && !fs.existsSync(DB_PATH) && fs.existsSync(SEED_
 
 const db = new DatabaseSync(DB_PATH);
 db.exec("PRAGMA journal_mode = WAL;");
+db.exec("PRAGMA synchronous = NORMAL;");
 db.exec("PRAGMA foreign_keys = ON;");
 db.exec("PRAGMA busy_timeout = 5000;");
+db.exec("PRAGMA cache_size = -64000;");
+db.exec("PRAGMA temp_store = MEMORY;");
+db.exec("PRAGMA mmap_size = 268435456;");
 db.function("fenix_norm", { deterministic: true }, (value) => normalizarTexto(String(value ?? "")));
 
 // Columnas estándar según tipo de plantilla (igual a Google Sheets)
@@ -204,6 +208,7 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_sales_sup ON sales(supervisor);
     CREATE INDEX IF NOT EXISTS idx_sales_rut ON sales(rut);
     CREATE INDEX IF NOT EXISTS idx_sales_mes_anio ON sales(anio, mes);
+    CREATE INDEX IF NOT EXISTS idx_sales_comp_mes_anio ON sales(company_slug, anio, mes);
   `);
 
   try {
