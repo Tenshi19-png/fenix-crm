@@ -688,13 +688,14 @@ const server = http.createServer(async (req, res) => {
       if (method === "GET" && pathname === "/api/n8n/sesion") {
         const tel = urlObj.searchParams.get("telefono") || urlObj.searchParams.get("chat_id") || "";
         if (!tel) return sendJson(res, 400, { ok: false, message: "Indica ?telefono= o ?chat_id=" });
-        return sendJson(res, 200, { ok: true, sesion: getBotSession(tel) });
+        const sesion = getBotSession(tel);
+        return sendJson(res, 200, { ok: true, sesion, ...(sesion || {}) });
       }
 
       if ((method === "POST" || method === "PATCH") && pathname === "/api/n8n/sesion") {
         const body = await readJsonBody(req);
         const sesion = upsertBotSession(body);
-        return sendJson(res, 200, { ok: true, sesion });
+        return sendJson(res, 200, { ok: true, sesion, ...(sesion || {}) });
       }
     }
 

@@ -1475,7 +1475,12 @@ function upsertBotSession(payload) {
   const key = String(payload.telefono || payload.chat_id || "").trim();
   if (!key) throw new Error("Se requiere 'telefono' o 'chat_id'.");
   const current = getBotSession(key);
-  const estado = payload.estado !== undefined ? String(payload.estado) : current.estado;
+  const estado =
+    payload.nuevo_estado !== undefined
+      ? String(payload.nuevo_estado)
+      : payload.estado !== undefined
+      ? String(payload.estado)
+      : current.estado;
   const fIni = payload.temp_fecha_inicio !== undefined ? String(payload.temp_fecha_inicio) : current.temp_fecha_inicio;
   const fFin = payload.temp_fecha_fin !== undefined ? String(payload.temp_fecha_fin) : current.temp_fecha_fin;
   const hoja = payload.temp_hoja !== undefined ? String(payload.temp_hoja) : current.temp_hoja;
