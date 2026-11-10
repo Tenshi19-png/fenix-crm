@@ -583,34 +583,79 @@ function supervisorMatchesFilter(saleSupervisor, supObjOrName, supsCache = null)
 function resolveCompanyDestination(operador, tipoVenta = "") {
   const opNorm = normalizarTexto(operador);
   const tvNorm = normalizarTexto(tipoVenta);
+  const combined = normalizarTexto((operador || "") + " " + (tipoVenta || ""));
   const companies = getAllCompanies();
 
-  if (!opNorm) return null;
+  if (!opNorm && !tvNorm) return null;
 
-  if (opNorm.includes("movistar fijo") || (opNorm === "movistar" && tvNorm)) {
-    if (tvNorm.includes("movil")) return companies.find((c) => c.slug === "ventas-moviles-movistar");
-    if (tvNorm.includes("paquetiz")) return companies.find((c) => c.slug === "paquetizacion-movistar");
-    if (tvNorm.includes("con tenencia")) return companies.find((c) => c.slug === "movistar-con-tenencia");
-    if (tvNorm.includes("sin tenencia")) return companies.find((c) => c.slug === "movistar-sin-tenencia");
+  // 1. Coincidencia exacta con slug, hoja o nombre cuando no hay ambigüedad
+  const exact = companies.find((c) =>
+    normalizarTexto(c.slug) === opNorm ||
+    normalizarTexto(c.hoja) === opNorm ||
+    normalizarTexto(c.nombre) === opNorm ||
+    normalizarTexto(c.operador_form) === opNorm
+  );
+  if (exact && !tvNorm) return exact;
+
+  // 2. Entel (Pyme Móvil, Pyme Hogar, Móvil, Fijo/Hogar)
+  if (combined.includes("entel") && combined.includes("pyme") && combined.includes("movil")) {
+    const c = companies.find((c) => c.slug === "ventas-entel-pyme-movil");
+    if (c) return c;
+  }
+  if (combined.includes("entel") && combined.includes("pyme")) {
+    const c = companies.find((c) => c.slug === "ventas-entel-pyme");
+    if (c) return c;
+  }
+  if (combined.includes("entel") && combined.includes("movil")) {
+    const c = companies.find((c) => c.slug === "ventas-entel-movil");
+    if (c) return c;
+  }
+  if (combined.includes("entel")) {
+    const c = companies.find((c) => c.slug === "ventas-entel");
+    if (c) return c;
+  }
+
+  // 3. Claro y VTR (Móvil vs Hogar)
+  if (combined.includes("claro") && combined.includes("movil")) {
+    const c = companies.find((c) => c.slug === "ventas-claro-movil");
+    if (c) return c;
+  }
+  if (combined.includes("claro") || combined.includes("vtr")) {
+    const c = companies.find((c) => c.slug === "claro-vtr-hogar");
+    if (c) return c;
+  }
+
+  // 4. WOM (Hogar)
+  if (combined.includes("wom")) {
+    const c = companies.find((c) => c.slug === "ventas-wom-hogar");
+    if (c) return c;
+  }
+
+  // 5. A&A Sales
+  if (combined.includes("a&a") || combined.includes("aa sales") || combined.includes("a and a")) {
+    const c = companies.find((c) => c.slug === "aa-sales");
+    if (c) return c;
+  }
+
+  // 6. Movistar (Móvil, Paquetización, Con Tenencia, Sin Tenencia)
+  if (combined.includes("movistar") || combined.includes("instalacion") || combined.includes("paquetiz") || combined.includes("tenencia")) {
+    if (combined.includes("movil")) return companies.find((c) => c.slug === "ventas-moviles-movistar");
+    if (combined.includes("paquetiz")) return companies.find((c) => c.slug === "paquetizacion-movistar");
+    if (combined.includes("con tenencia")) return companies.find((c) => c.slug === "movistar-con-tenencia");
+    if (combined.includes("sin tenencia")) return companies.find((c) => c.slug === "movistar-sin-tenencia");
     return companies.find((c) => c.slug === "movistar-sin-tenencia");
   }
 
+  // 7. Búsqueda por operadores_extra
   for (const c of companies) {
-    if (
-      normalizarTexto(c.slug) === opNorm ||
-      normalizarTexto(c.hoja) === opNorm ||
-      normalizarTexto(c.nombre) === opNorm ||
-      normalizarTexto(c.operador_form) === opNorm
-    ) {
-      return c;
-    }
     const extras = String(c.operadores_extra || "")
       .split(",")
       .map((x) => normalizarTexto(x))
       .filter(Boolean);
-    if (extras.includes(opNorm)) return c;
+    if (extras.some((ext) => opNorm.includes(ext) || tvNorm.includes(ext) || ext.includes(opNorm))) return c;
   }
 
+  if (exact) return exact;
   return null;
 }
 

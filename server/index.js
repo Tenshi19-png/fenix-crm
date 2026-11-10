@@ -393,17 +393,19 @@ const server = http.createServer(async (req, res) => {
     // 5. Webhook compatible con Tally
     if (method === "POST" && pathname === "/api/webhook/tally") {
       const body = await readJsonBody(req);
-      const fields = body.data && Array.isArray(body.data.fields) ? body.data.fields : [];
-      let operador = "";
-      let tipoVenta = "";
-      let ejecutivo = "";
-      let supervisor = "";
-      let subcompania = "";
-      let hizoClick = "";
-      let ficha = "";
+      const fields = body.data && Array.isArray(body.data.fields) ? body.data.fields : (Array.isArray(body.fields) ? body.fields : []);
+      let operador = body.operador || body.compania || "";
+      let tipoVenta = body.tipo_venta || body.tipoVenta || "";
+      let ejecutivo = body.ejecutivo || "";
+      let supervisor = body.supervisor || "";
+      let subcompania = body.subcompania || "";
+      let hizoClick = body.hizo_click || body.hizoClick || "";
+      let ficha = body.ficha || "";
+      let imagenUrl = body.imagen_url || body.imagenUrl || "";
 
+      const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
       for (const f of fields) {
-        const label = String(f.label || "").toLowerCase();
+        const label = norm(f.label);
         let val = f.value;
         if (Array.isArray(val) && f.options) {
           val = val
@@ -412,16 +414,19 @@ const server = http.createServer(async (req, res) => {
               return opt ? opt.text : id;
             })
             .join(", ");
+        } else if (Array.isArray(val) && val[0] && typeof val[0] === 'object' && val[0].url) {
+          val = val.map(v => v.url).join(", ");
         }
         const sVal = String(val ?? "").trim();
         if (!sVal) continue;
-        if (label.includes("multiple choice") || label.includes("operador") || (!label && !operador)) operador = sVal;
-        else if (label.includes("tipo de venta")) tipoVenta = sVal;
-        else if (label.includes("ejecutivo") && !ejecutivo) ejecutivo = sVal;
-        else if (label.includes("supervisor") && !supervisor) supervisor = sVal;
-        else if (label.includes("compañía es la venta") || label.includes("compania es la venta")) subcompania = sVal;
-        else if (label.includes("click")) hizoClick = sVal;
-        else if (label.includes("ficha") || (sVal.includes("\n") && sVal.includes(":"))) ficha = sVal;
+        if (!operador && (label.includes("compan") || label.includes("operador") || label.includes("multiple choice"))) operador = sVal;
+        else if (!tipoVenta && label.includes("tipo de venta")) tipoVenta = sVal;
+        else if (!ejecutivo && label.includes("ejecutivo")) ejecutivo = sVal;
+        else if (!supervisor && label.includes("supervisor")) supervisor = sVal;
+        else if (!subcompania && (label.includes("compania es la venta") || label.includes("compañia es la venta"))) subcompania = sVal;
+        else if (!hizoClick && label.includes("click")) hizoClick = sVal;
+        else if (!ficha && (label.includes("ficha") || (sVal.includes("\n") && sVal.includes(":")))) ficha = sVal;
+        else if (!imagenUrl && (label.includes("imagen") || label.includes("archivo") || label.includes("suba"))) imagenUrl = sVal;
       }
 
       const result = submitFormSale({
@@ -431,9 +436,11 @@ const server = http.createServer(async (req, res) => {
         supervisor: supervisor || "Sin Asignar",
         subcompania,
         hizo_click: hizoClick,
+        imagen_url: imagenUrl,
         ficha,
+        forzar_duplicada: !!body.forzar_duplicada
       });
-      if (result.ok) {
+      if (result.ok && result.sale && result.company) {
         broadcastEvent("sale_created", {
           company_slug: result.company.slug,
           hoja: result.company.hoja,
@@ -696,6 +703,71 @@ const server = http.createServer(async (req, res) => {
         const body = await readJsonBody(req);
         const sesion = upsertBotSession(body);
         return sendJson(res, 200, { ok: true, sesion, ...(sesion || {}) });
+      }
+
+      // Endpoint para registrar ventas directamente desde n8n
+      if (method === "POST" && (pathname === "/api/n8n/registrar-venta" || pathname === "/api/n8n/sales")) {
+        const body = await readJsonBody(req);
+
+        let operador = body.operador || body.compania || body.datosVenta?.compania || "";
+        let tipoVenta = body.tipo_venta || body.tipoVenta || body.datosVenta?.tipoVenta || "";
+        let ejecutivo = body.ejecutivo || body.datosVenta?.ejecutivo || "";
+        let supervisor = body.supervisor || body.datosVenta?.supervisor || "";
+        let subcompania = body.subcompania || body.datosVenta?.subcompania || "";
+        let hizoClick = body.hizo_click || body.hizoClick || body.datosVenta?.hizoClick || "";
+        let ficha = body.ficha || body.datosVenta?.ficha || "";
+        let imagenUrl = body.imagen_url || body.imagenUrl || body.datosVenta?.imagenUrl || "";
+        let overrides = body.overrides || {};
+
+        // Si viene con campos de Tally en data.fields o fields
+        const fields = (body.data && Array.isArray(body.data.fields)) ? body.data.fields : (Array.isArray(body.fields) ? body.fields : []);
+        if (fields.length > 0) {
+          const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+          for (const f of fields) {
+            const label = norm(f.label);
+            let val = f.value;
+            if (Array.isArray(val) && f.options) {
+              val = val.map(id => {
+                const opt = f.options.find(o => o.id === id);
+                return opt ? opt.text : id;
+              }).join(", ");
+            } else if (Array.isArray(val) && val[0] && typeof val[0] === 'object' && val[0].url) {
+              val = val.map(v => v.url).join(", ");
+            }
+            const sVal = String(val ?? "").trim();
+            if (!sVal) continue;
+            if (!operador && (label.includes("compan") || label.includes("operador") || label.includes("multiple choice"))) operador = sVal;
+            else if (!tipoVenta && label.includes("tipo de venta")) tipoVenta = sVal;
+            else if (!ejecutivo && label.includes("ejecutivo")) ejecutivo = sVal;
+            else if (!supervisor && label.includes("supervisor")) supervisor = sVal;
+            else if (!subcompania && (label.includes("compania es la venta") || label.includes("compañia es la venta"))) subcompania = sVal;
+            else if (!hizoClick && label.includes("click")) hizoClick = sVal;
+            else if (!ficha && (label.includes("ficha") || (sVal.includes("\n") && sVal.includes(":")))) ficha = sVal;
+            else if (!imagenUrl && (label.includes("imagen") || label.includes("archivo") || label.includes("suba"))) imagenUrl = sVal;
+          }
+        }
+
+        const result = submitFormSale({
+          operador,
+          tipo_venta: tipoVenta,
+          ejecutivo: ejecutivo || "Ejecutivo n8n",
+          supervisor: supervisor || "Sin Asignar",
+          subcompania,
+          hizo_click: hizoClick,
+          imagen_url: imagenUrl,
+          ficha,
+          overrides,
+          forzar_duplicada: !!body.forzar_duplicada
+        });
+
+        if (result.ok && result.sale && result.company) {
+          broadcastEvent("sale_created", {
+            company_slug: result.company.slug,
+            hoja: result.company.hoja,
+            sale: result.sale,
+          });
+        }
+        return sendJson(res, 200, result);
       }
     }
 
