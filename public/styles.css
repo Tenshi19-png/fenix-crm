@@ -147,50 +147,66 @@ body.standalone-form-mode #btnCopyFormLink {
 }
 
 .global-search-wrap {
-  flex: 1 1 280px;
-  min-width: 240px;
-  max-width: 440px;
+  flex: 1 1 300px;
+  min-width: 260px;
+  max-width: 480px;
   position: relative;
   display: flex;
   align-items: center;
-  margin: 0 12px;
-}
-
-.global-search-wrap input {
-  width: 100%;
-  min-width: 0;
-  padding: 8px 52px 8px 36px;
-  border-radius: 9px;
+  gap: 10px;
+  margin: 0 14px;
+  padding: 5px 10px 5px 14px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: #f8fafc;
-  color: var(--text);
-  font-size: 12.5px;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
 }
 
-.global-search-wrap input:focus {
+.global-search-wrap:focus-within {
   background: #fff;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(19, 126, 104, 0.15);
 }
 
+.global-search-wrap input,
+.global-search-wrap input[type="text"],
+.global-search-wrap input[type="search"] {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 4px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.global-search-wrap input[type="search"]::-webkit-search-cancel-button {
+  cursor: pointer;
+  margin-left: 6px;
+}
+
 .search-ico {
-  position: absolute;
-  left: 11px;
-  color: #94a3b8;
+  position: static;
+  flex-shrink: 0;
+  color: #64748b;
   pointer-events: none;
 }
 
 .kbd-hint {
-  position: absolute;
-  right: 8px;
-  font-size: 10px;
-  padding: 2px 6px;
+  position: static;
+  flex-shrink: 0;
+  font-size: 10.5px;
+  padding: 2px 7px;
   border-radius: 5px;
   background: #e2e8f0;
   color: #475569;
   font-family: inherit;
   font-weight: 600;
+  user-select: none;
 }
 
 .topbar-actions {
@@ -378,7 +394,8 @@ body.standalone-form-mode #btnCopyFormLink {
   text-decoration: underline;
 }
 
-input[type="text"],
+input[type="text"]:not(#globalSearchInput),
+input[type="search"]:not(#globalSearchInput),
 input[type="date"],
 input[type="number"],
 select,
@@ -395,7 +412,7 @@ textarea {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-input:focus,
+input:not(#globalSearchInput):focus,
 select:focus,
 textarea:focus {
   border-color: var(--primary);

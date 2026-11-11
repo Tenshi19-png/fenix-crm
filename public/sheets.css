@@ -3,7 +3,7 @@
 .topbar { box-shadow:none; border-bottom:1px solid #dde4e9; gap:16px; padding:10px 20px; }
 .brand { flex-shrink:0; }
 .brand-title { white-space:nowrap; }
-.global-search-wrap { min-width:240px; margin:0 12px; }
+.global-search-wrap { min-width:260px; margin:0 14px; gap:10px; padding:5px 10px 5px 14px; }
 .brand-logo { background:linear-gradient(135deg,#137e68,#229a81); }
 .main-nav { background:#fff; }
 .sheet-container-card { border-radius:10px 10px 0 0; box-shadow:none; overflow:hidden; }

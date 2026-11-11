@@ -62,15 +62,17 @@
     </div>
 
     <div class="global-search-wrap" id="globalSearchWrap">
-      <svg class="search-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+      <svg class="search-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
         <circle cx="11" cy="11" r="8"></circle>
         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
       </svg>
       <input
-        type="text"
+        type="search"
         id="globalSearchInput"
         placeholder="Buscar por RUT, cliente, dirección, teléfono o ejecutiva..."
         autocomplete="off"
+        data-lpignore="true"
+        data-1p-ignore="true"
       />
       <kbd class="kbd-hint">Enter</kbd>
     </div>
@@ -356,9 +358,12 @@
 
           <div class="sheet-filters">
             <input
-              type="text"
+              type="search"
               id="sheetSearchInput"
               placeholder="Filtrar por RUT, cliente, dirección, teléfono o ejecutiva..."
+              autocomplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
               oninput="window.app.debouncedLoadSheet()"
             />
             <select id="sheetMonthFilter" aria-label="Mes" onchange="window.app.debouncedLoadSheet()">
@@ -545,7 +550,7 @@
           <button type="button" class="sup-filter-btn" data-filter="inactivos" onclick="window.app.filterSupervisors('inactivos')">○ Inactivos <span id="countSupsInactive" class="count-pill">0</span></button>
         </div>
         <div style="flex:1; max-width:320px; min-width:200px;">
-          <input type="text" id="supSearchInput" placeholder="🔍 Filtrar supervisor o empresa..." oninput="window.app.onSupervisorSearch(this.value)" style="width:100%; padding:6px 12px; font-size:12.5px; border-radius:6px; border:1px solid #cbd5e1; background:#fff;" />
+          <input type="search" id="supSearchInput" placeholder="🔍 Filtrar supervisor o empresa..." autocomplete="off" data-lpignore="true" data-1p-ignore="true" oninput="window.app.onSupervisorSearch(this.value)" style="width:100%; padding:6px 12px; font-size:12.5px; border-radius:6px; border:1px solid #cbd5e1; background:#fff;" />
         </div>
       </div>
 
