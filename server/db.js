@@ -226,6 +226,7 @@ function initSchema() {
   insViewPerm.run("subadmin_readonly", "👁️ Ventas Fenix (Solo Lectura)", "");
   insViewPerm.run("moviles", "📱 Hoja Espejo Móviles (Solo Notas y Seguimiento)", "");
   db.prepare("UPDATE view_permissions SET nombre = '📊 Ventas Fenix (Modificar)' WHERE vista_key = 'subadmin'").run();
+  db.prepare("UPDATE companies SET es_movil_espejo = 0, ocultar_en_espejo_movil = 1 WHERE slug = 'aa-sales'").run();
 
   const insSetting = db.prepare("INSERT OR IGNORE INTO payment_settings (clave, valor) VALUES (?, ?)");
   insSetting.run("PAGO_PAQ", 10000);
@@ -442,8 +443,8 @@ function ensureDefaultCompaniesAndSupervisors() {
         iniciales_pagos: "A&A",
         tipo_categoria: "aa",
         basada_en: "Ventas Entel Movil",
-        es_movil_espejo: 1,
-        ocultar_en_espejo_movil: 0,
+        es_movil_espejo: 0,
+        ocultar_en_espejo_movil: 1,
         usa_portado: 1,
         emoji: "🤝",
         color: "#00acc1",
@@ -515,6 +516,24 @@ ensureDefaultCompaniesAndSupervisors();
 // ============================================================================
 // CONSULTAS Y RESOLUCIÓN DE SUPERVISORES / COMPAÑÍAS
 // ============================================================================
+
+/**
+ * Returns whether a company is visible in the Espejo Móviles view.
+ */
+function isMobileMirrorCompany(company) {
+  return Boolean(company && company.es_movil_espejo && !company.ocultar_en_espejo_movil);
+}
+
+/**
+ * Throws a 403 error if a company is not accessible from the Espejo Móviles view.
+ */
+function assertMobileMirrorCompany(company) {
+  if (!isMobileMirrorCompany(company)) {
+    const err = new Error("Esta hoja no está disponible en el acceso Espejo Móviles.");
+    err.statusCode = 403;
+    throw err;
+  }
+}
 
 function getAllCompanies() {
   const rows = db.prepare("SELECT * FROM companies ORDER BY orden ASC, nombre ASC").all();
@@ -988,6 +1007,12 @@ function updateSaleFields(id, patch, roleOrOpts = "admin") {
 
   const existing = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);
   if (!existing) throw new Error("Venta no encontrada.");
+  if (role === "moviles") {
+    const comp = db
+      .prepare("SELECT es_movil_espejo, ocultar_en_espejo_movil FROM companies WHERE slug = ?")
+      .get(existing.company_slug);
+    assertMobileMirrorCompany(comp);
+  }
 
   const updates = {};
   for (const [k, v] of Object.entries(patch || {})) {
@@ -1081,6 +1106,7 @@ function bulkDeleteSales(ids = [], roleOrOpts = "admin") {
 function getCompanySales(companySlug, options = {}) {
   const company = db.prepare("SELECT * FROM companies WHERE slug = ?").get(companySlug);
   if (!company) throw new Error("Compañía no encontrada.");
+  if (options.vistaMovilEspejo) assertMobileMirrorCompany(company);
 
   const where = ['company_slug = ?'];
   const args = [companySlug];
@@ -1204,12 +1230,7 @@ function getDailySummary(fechaStr = null, options = {}) {
   const fechaObjetivo = fechaStr ? formatearFechaISOaLatina(fechaStr) : formatearFechaISOaLatina(new Date());
   const fTarget = extraerFechaSegura(fechaObjetivo);
 
-  const companies = getAllCompanies().filter((c) => {
-    if (options.onlyMobileMirror) {
-      return c.es_movil_espejo && !c.ocultar_en_espejo_movil;
-    }
-    return true;
-  });
+  const companies = getAllCompanies().filter((c) => !options.onlyMobileMirror || isMobileMirrorCompany(c));
   const companyMap = new Map(companies.map((c) => [c.slug, c]));
   const sups = getAllSupervisors();
 
@@ -2120,7 +2141,7 @@ function globalSearch(q, options = {}) {
   for (const r of rows) {
     const comp = compMap.get(r.company_slug);
     if (!comp) continue;
-    if (options.onlyMobileMirror && (!comp.es_movil_espejo || comp.ocultar_en_espejo_movil)) continue;
+    if (options.onlyMobileMirror && !isMobileMirrorCompany(comp)) continue;
     if (options.supervisor && !supervisorMatchesFilter(r.supervisor, options.supervisor, sups)) continue;
 
     const texto = normalizarTexto(
@@ -2462,6 +2483,7 @@ module.exports = {
   COLS_CLARO_VTR,
   COLS_MOVIL,
   slugify,
+  isMobileMirrorCompany,
   getAllCompanies,
   getAllSupervisors,
   resolveCanonicalSupervisor,

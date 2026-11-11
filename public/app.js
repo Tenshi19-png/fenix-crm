@@ -2080,7 +2080,7 @@ function renderSupervisorsPanel() {
             <span class="sl-badge sl-badge-movil">Espejo Móviles</span>
             <h3>📱 Vista Móviles — Solo Notas y Seguimiento (/?vista=moviles)</h3>
             <p class="integ-desc" style="margin-bottom:6px;">
-              Incluye Movistar Móvil, Claro Móvil, Entel Móvil y A&A Sales (oculta Entel Pyme Móvil). Bloquea los datos del cliente y solo deja editar Notas y Seguimiento.
+              Incluye Movistar Móvil, Claro Móvil y Entel Móvil (oculta A&A Sales y Entel Pyme Móvil). Bloquea los datos del cliente y solo deja editar Notas y Seguimiento.
             </p>
           </div>
           <div class="sl-actions">

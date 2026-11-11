@@ -218,7 +218,8 @@ function importSheetsDictionary(sheetsMap, options = {}) {
         iniciales: ini,
         plantilla_slug: esMovil ? "ventas-entel-movil" : "ventas-entel",
         es_movil: esMovil,
-        es_movil_espejo: esMovil && !normName.includes("pyme"),
+        es_movil_espejo: esMovil && !normName.includes("pyme") && !normName.includes("a&a") && !normName.includes("aa sales"),
+        ocultar_en_espejo_movil: esMovil && (normName.includes("pyme") || normName.includes("a&a") || normName.includes("aa sales")),
         ignoreIfExists: true,
       });
       companies = getAllCompanies();

@@ -11,6 +11,7 @@ const { URL } = require("node:url");
 const {
   db,
   UPLOADS_DIR,
+  isMobileMirrorCompany,
   submitFormSale,
   updateSaleFields,
   deleteSale,
@@ -350,7 +351,8 @@ const server = http.createServer(async (req, res) => {
       let supervisorActivo = null;
 
       if (vista === "moviles") {
-        companiesVisibles = companiesVisibles.filter((c) => c.es_movil_espejo && !c.ocultar_en_espejo_movil);
+        companiesVisibles = companiesVisibles.filter(isMobileMirrorCompany);
+        meta.companies = companiesVisibles;
       } else if (vista === "supervisor" && supParam) {
         const foundSup = meta.supervisors.find(
           (s) => s.token_acceso === supParam || s.nombre.toLowerCase() === supParam.toLowerCase()
@@ -875,7 +877,7 @@ const server = http.createServer(async (req, res) => {
         anio: urlObj.searchParams.get("anio") ?? "",
         estado: urlObj.searchParams.get("estado") || "all",
         q: urlObj.searchParams.get("q") || "",
-        vistaMovilEspejo: urlObj.searchParams.get("vista") === "moviles",
+        vistaMovilEspejo: urlObj.searchParams.get("vista") === "moviles" || role === "moviles",
       });
       const cols = data.company.columnas;
       const lines = [
@@ -931,8 +933,9 @@ const server = http.createServer(async (req, res) => {
     });
     fs.createReadStream(filePath).pipe(res);
   } catch (err) {
-    console.error("❌ Error en petición:", err);
-    sendJson(res, 500, { ok: false, message: err.message || "Error interno del servidor" });
+    const status = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+    if (status >= 500) console.error("❌ Error en petición:", err);
+    sendJson(res, status, { ok: false, message: err.message || "Error interno del servidor" });
   }
 });
 

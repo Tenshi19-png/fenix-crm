@@ -92,6 +92,36 @@ async function main() {
   assert.equal(getCompanySales('movistar-con-tenencia',{pageSize:1}).sales.length,1);
   assert(parsearFichaCompleta('NOMBRE CLIENTE: Cliente Prueba\nRUT: 12345678-5','10/11/2026'));
   console.log('✓ Respaldo, restauración y reversión ante respaldo inválido');
+
+  // Espejo Móviles oculta A&A Sales y permite Movistar/Claro/Entel Móvil (Admin/Ventas Fenix siguen viendo A&A)
+  updateViewEmails('moviles', 'moviles@example.invalid');
+  const movKey = auth.issueCredential('moviles@example.invalid').password;
+  const movToken = (await login('moviles', 'moviles@example.invalid', movKey)).token;
+  const m = { role: 'moviles', token: movToken };
+  const movBoot = await json('/api/bootstrap?vista=moviles', m);
+  const movSlugs = movBoot.companiesVisibles.map(c => c.slug);
+  assert(!movSlugs.includes('aa-sales'), 'Espejo Móviles no debe incluir aa-sales');
+  assert(!movSlugs.includes('ventas-entel-pyme-movil'), 'Espejo Móviles no debe incluir ventas-entel-pyme-movil');
+  assert(movSlugs.includes('ventas-entel-movil'), 'Espejo Móviles debe incluir ventas-entel-movil');
+  assert(movSlugs.includes('ventas-claro-movil'), 'Espejo Móviles debe incluir ventas-claro-movil');
+  assert(movSlugs.includes('ventas-moviles-movistar'), 'Espejo Móviles debe incluir ventas-moviles-movistar');
+  assert((await json('/api/bootstrap', a)).companiesVisibles.some(c => c.slug === 'aa-sales'), 'Admin debe seguir viendo aa-sales');
+  assert((await json('/api/bootstrap', f)).companiesVisibles.some(c => c.slug === 'aa-sales'), 'Ventas Fenix debe seguir viendo aa-sales');
+  assert.equal((await request('/api/companies/aa-sales/sales?vista=moviles', m)).status, 403);
+  assert.equal((await request('/api/export/aa-sales.csv?vista=moviles', m)).status, 403);
+  const aaIns = db.prepare('INSERT INTO sales (company_slug, fecha, fecha_orden, mes, anio, ejecutivo, supervisor, nombre_cliente, estado) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run('aa-sales', '10/11/2026', 20261110, 10, 2026, 'Ejecutivo Prueba', 'Francisca', 'Cliente AA Oculto', 'Pendiente');
+  const emIns = db.prepare('INSERT INTO sales (company_slug, fecha, fecha_orden, mes, anio, ejecutivo, supervisor, nombre_cliente, estado) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run('ventas-entel-movil', '10/11/2026', 20261110, 10, 2026, 'Ejecutivo Prueba', 'Francisca', 'Cliente Entel Movil Visible', 'Pendiente');
+  assert.equal((await request('/api/sales/' + aaIns.lastInsertRowid, { ...m, method: 'PATCH', body: { notas_movil: 'No permitido' } })).status, 403);
+  await json('/api/sales/' + emIns.lastInsertRowid, { ...m, method: 'PATCH', body: { notas_movil: 'Seguimiento ok' } });
+  const movSearch = await json('/api/search?q=Cliente&vista=moviles', m);
+  assert(!movSearch.results.some(r => r.company_slug === 'aa-sales'), 'Búsqueda en Móviles no debe devolver A&A Sales');
+  assert(movSearch.results.some(r => r.company_slug === 'ventas-entel-movil'), 'Búsqueda en Móviles debe devolver Entel Móvil');
+  const movSummary = await json('/api/summary/daily?fecha=2026-11-10&vista=moviles', m);
+  assert(!JSON.stringify(movSummary.bloques || []).includes('A&A'), 'Resumen del día en Móviles no debe incluir A&A Sales');
+  console.log('✓ Espejo Móviles oculta A&A Sales y mantiene Movistar/Claro/Entel Móvil');
+
   console.log('Todas las pruebas de la base central pasaron. Se usaron exclusivamente datos de prueba.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>{server.closeAllConnections();server.close();db.close();});
