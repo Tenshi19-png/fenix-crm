@@ -1646,7 +1646,7 @@ function querySalesForN8n(params = {}) {
   }
 
   const porHoja = {};
-  const porEstado = { Instalado: 0, Portado: 0, Pendiente: 0, Cancelado: 0, "No Realizado": 0, Otros: 0 };
+  const porEstado = { Instalado: 0, Portado: 0, Iniciado: 0, Pendiente: 0, Cancelado: 0, "No Realizado": 0, Otros: 0 };
   const porSupervisor = {};
 
   const ventasLimpias = rows.map((r) => {
@@ -1659,6 +1659,7 @@ function querySalesForN8n(params = {}) {
 
     const estLow = normalizarTexto(r.estado);
     if (estLow.includes("instalad")) porEstado.Instalado++;
+    else if (estLow.includes("iniciad")) porEstado.Iniciado++;
     else if (estLow.includes("portad")) porEstado.Portado++;
     else if (estLow.includes("cancel")) porEstado.Cancelado++;
     else if (estLow.includes("no realiz")) porEstado["No Realizado"]++;
@@ -1699,8 +1700,9 @@ function querySalesForN8n(params = {}) {
   ];
 
   if (ventasLimpias.length > 0) {
+    const inicTxt = porEstado.Iniciado > 0 ? ` | 🔵 Inic: ${porEstado.Iniciado}` : "";
     tgLines.push(
-      `⚡ *Estados:* 🟢 Inst/Port: ${porEstado.Instalado + porEstado.Portado} | 🟡 Pend: ${porEstado.Pendiente} | 🔴 Canc: ${porEstado.Cancelado}`,
+      `⚡ *Estados:* 🟢 Inst/Port: ${porEstado.Instalado + porEstado.Portado}${inicTxt} | 🟡 Pend: ${porEstado.Pendiente} | 🔴 Canc: ${porEstado.Cancelado}`,
       ``
     );
 

@@ -40,6 +40,10 @@ const state = {
     hizo_click: "",
     imagen_base64: "",
     manualEdits: {},
+    activePendingId: null,
+    localHistoryTab: "pending",
+    isResendingAll: false,
+    restoringDraft: false,
   },
   sheetDebounceTimer: null,
   previewDebounceTimer: null,
@@ -112,14 +116,66 @@ async function api(url, options = {}) {
     "x-fenix-admin-preview": isAdminPreview,
     ...(options.headers || {}),
   };
-  const res = await fetch(apiUrl(url), { ...options, headers });
-  const data = await res.json();
-  if (!res.ok && res.status !== 409) {
-    if (res.status === 403 && data.requiresEmailGate) {
+
+  const fetchOpts = { ...options, headers };
+  delete fetchOpts.timeoutMs;
+
+  let controller = null;
+  let timeoutId = null;
+  if (options.timeoutMs && Number(options.timeoutMs) > 0 && !options.signal) {
+    controller = new AbortController();
+    fetchOpts.signal = controller.signal;
+    timeoutId = setTimeout(() => controller.abort(), Number(options.timeoutMs));
+  }
+
+  let res;
+  try {
+    res = await fetch(apiUrl(url), fetchOpts);
+  } catch (networkErr) {
+    const isTimeout = networkErr && networkErr.name === "AbortError";
+    const err = new Error(
+      isTimeout
+        ? "El servidor tardó demasiado en responder."
+        : "No se pudo conectar con el servidor. Verifica tu conexión a internet."
+    );
+    err.isNetworkOrServerError = true;
+    err.isTimeout = isTimeout;
+    err.isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+
+  const rawText = await res.text();
+  let data = null;
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    data = null;
+  }
+
+  if (res.status === 409) {
+    return { status: res.status, data: data || {} };
+  }
+
+  if (!res.ok) {
+    if (res.status === 403 && data && data.requiresEmailGate) {
       await loadBootstrap();
     }
-    throw new Error(data.message || "Error en la solicitud");
+    const err = new Error((data && data.message) || `Error del servidor (HTTP ${res.status}).`);
+    err.status = res.status;
+    err.data = data;
+    err.isNetworkOrServerError = res.status >= 500 || res.status === 408 || res.status === 429 || !data;
+    throw err;
   }
+
+  if (data === null) {
+    const err = new Error("El servidor devolvió una respuesta no válida.");
+    err.status = res.status;
+    err.isNetworkOrServerError = true;
+    throw err;
+  }
+
   return { status: res.status, data };
 }
 
@@ -230,7 +286,18 @@ async function init() {
       if (key === "numero_principal" || key === "adicional") {
         refreshMobileLinesCounter();
       }
+      scheduleFormDraftSave();
     });
+  }
+
+  const saleForm = document.getElementById("fenixSaleForm");
+  if (saleForm) {
+    saleForm.addEventListener("input", scheduleFormDraftSave);
+    saleForm.addEventListener("change", scheduleFormDraftSave);
+  }
+
+  if (state.vista === "formulario") {
+    setupFormularioNetworkMonitor();
   }
 
   await loadBootstrap();
@@ -366,6 +433,8 @@ async function logoutEmailSession() {
   await loadBootstrap();
 }
 
+const FORM_META_CACHE_KEY = "fenix_form_meta_cache_v1";
+
 async function loadBootstrap() {
   const qs = new URLSearchParams();
   qs.set("vista", state.vista);
@@ -373,7 +442,38 @@ async function loadBootstrap() {
     qs.set("sup", state.supervisorFiltro);
   }
 
-  const { data } = await api(`/api/bootstrap?${qs.toString()}`);
+  let data;
+  try {
+    const res = await api(`/api/bootstrap?${qs.toString()}`, {
+      timeoutMs: state.vista === "formulario" ? 12000 : 0,
+    });
+    data = res.data;
+    if (state.vista === "formulario" && data && data.ok) {
+      try {
+        localStorage.setItem(FORM_META_CACHE_KEY, JSON.stringify(data));
+      } catch {}
+    }
+  } catch (err) {
+    if (state.vista !== "formulario") throw err;
+    let cached = null;
+    try {
+      const raw = localStorage.getItem(FORM_META_CACHE_KEY);
+      if (raw) cached = JSON.parse(raw);
+    } catch {}
+    data = cached || {
+      ok: true,
+      vista: "formulario",
+      requiresEmailGate: false,
+      brandGroups: [],
+      companies: [],
+      supervisors: [],
+      ejecutivosPorSupervisor: {},
+      todosEjecutivos: [],
+    };
+    data._offlineCached = true;
+    data._bootstrapError = err.message;
+  }
+
   state.meta = data;
   state.isReadOnly = Boolean(data.isReadOnly);
   state.canEdit = data.canEdit !== undefined ? Boolean(data.canEdit) : true;
@@ -688,7 +788,8 @@ function switchTab(tabName) {
 
 function refreshCurrentTab() {
   if (!state.meta || state.meta.requiresEmailGate) return;
-  if (state.activeTab === "hojas") loadActiveSheet();
+  if (state.activeTab === "formulario") renderLocalFormBackupUI();
+  else if (state.activeTab === "hojas") loadActiveSheet();
   else if (state.activeTab === "resumen") loadDailySummary();
   else if (state.activeTab === "pagos" && (state.vista === "admin" || state.vista === "subadmin")) loadPayments();
   else if (state.activeTab === "supervisores" && state.vista === "admin") renderSupervisorsPanel();
@@ -752,6 +853,14 @@ function renderFormMetadata() {
   } else if (state.form.brandId) {
     renderBrandVariants();
   }
+
+  if (!state.form.draftRestoredOnce) {
+    state.form.draftRestoredOnce = true;
+    restoreFormDraft();
+  }
+  syncDefaultLocalHistoryTab();
+  updateFormularioOnlineStatusUI();
+  renderLocalFormBackupUI();
 }
 
 function selectBrand(brandId) {
@@ -770,6 +879,7 @@ function selectBrand(brandId) {
     applyVariantSelection(firstVar);
   }
   renderBrandVariants();
+  scheduleFormDraftSave();
 }
 
 function selectVariant(variantId) {
@@ -781,6 +891,7 @@ function selectVariant(variantId) {
   applyVariantSelection(v);
   renderBrandVariants();
   triggerFichaPreview();
+  scheduleFormDraftSave();
 }
 
 function applyVariantSelection(v) {
@@ -844,6 +955,7 @@ function selectClickOption(val) {
     b.classList.toggle("selected", b.dataset.val === val);
   });
   document.getElementById("condClickImage").classList.toggle("hidden", val !== "Sí");
+  scheduleFormDraftSave();
 }
 
 function updateFormPreviewMode() {
@@ -919,6 +1031,7 @@ function readImageFileToBase64(file) {
     img.src = reader.result;
     img.classList.remove("hidden");
     document.getElementById("dropzonePrompt").textContent = "Imagen adjuntada (clic para cambiar)";
+    scheduleFormDraftSave();
   };
   reader.readAsDataURL(file);
 }
@@ -928,29 +1041,55 @@ function triggerFichaPreview() {
   state.previewDebounceTimer = setTimeout(runFichaPreview, 140);
 }
 
-async function runFichaPreview() {
-  const ficha = document.getElementById("formFicha").value;
-  const fecha = document.getElementById("formFecha").value;
-  const ejecutivo = document.getElementById("formEjecutivo").value;
+function parseFichaOfflineFallback(ficha = "") {
+  const lines = String(ficha || "").split(/\r?\n/);
+  const pick = (reList) => {
+    for (const re of reList) {
+      const m = String(ficha || "").match(re);
+      if (m && m[1] && m[1].trim()) return m[1].trim();
+    }
+    return "";
+  };
+  const rut = pick([
+    /^(?:[\*\-•]\s*)?(?:RUT\s*(?:DEL)?\s*CLIENTE|RUT\s*TITULAR|RUN|RUT)\s*[:\-]+\s*([^\n\r]+)$/im,
+    /(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])/,
+  ]);
+  const nombreCliente = pick([
+    /^(?:[\*\-•]\s*)?(?:NOMBRE\s*(?:COMPLETO)?\s*(?:DEL)?\s*CLIENTE|NOMBRE\s*COMPLETO|TITULAR|NOMBRE)\s*[:\-]+\s*([^\n\r]+)$/im,
+  ]);
+  const direccion = pick([
+    /^(?:[\*\-•]\s*)?(?:DIRECCI[OÓ]N\s*(?:DE\s*|A\s*)?INSTALACI[OÓ]N|DIRECCI[OÓ]N|DOMICILIO)\s*[:\-]+\s*([^\n\r]+)$/im,
+  ]);
+  const comuna = pick([/^(?:[\*\-•]\s*)?(?:COMUNA|CIUDAD|LOCALIDAD)\s*[:\-]+\s*([^\n\r]+)$/im]);
+  const correo = pick([/^(?:[\*\-•]\s*)?(?:CORREO\s*(?:ELECTR[OÓ]NICO)?|E-?MAIL|MAIL)\s*[:\-]+\s*([^\n\r]+)$/im]);
+  const codigoBiometria = pick([
+    /^(?:[\*\-•]\s*)?(?:N[ÚU]MERO\s*(?:DE)?\s*PETICI[OÓ]N|ID\s*(?:DE\s*)?ORDEN|C[OÓ]DIGO\s*(?:DE)?\s*BIOMETR[IÍ]A|PETICI[OÓ]N|ORDEN)\s*[:\-]+\s*([^\n\r]+)$/im,
+  ]);
+  const servicio = pick([
+    /^(?:[\*\-•]\s*)?(?:SERVICIOS?\s*(?:A)?\s*CONTRATAR|PLAN\s*SOLICITADO|PLAN\s*A\s*CONTRATAR|PLAN|SERVICIO)\s*[:\-]+\s*([^\n\r]+)$/im,
+  ]);
+  const telPrincipalRaw = pick([
+    /^(?:[\*\-•]\s*)?(?:N[ÚU]MERO\s*PRINCIPAL|TEL[EÉ]FONOS?\s*(?:DE)?\s*CONTACTO|TEL[EÉ]FONO|CELULAR|CONTACTO)\s*[:\-]+\s*([^\n\r]+)$/im,
+  ]);
+  const adicRaw = pick([/^(?:[\*\-•]\s*)?(?:N[ÚU]MEROS?\s*ADICIONALES?|ADICIONALES?)\s*[:\-]+\s*([^\n\r]+)$/im]);
+  const princNums = countMobileNumbersClient(telPrincipalRaw);
+  const adicNums = countMobileNumbersClient(adicRaw).filter((n) => n !== princNums[0]);
+  return {
+    rut,
+    nombreCliente,
+    direccion,
+    direccionLimpia: "",
+    comuna,
+    correo,
+    codigoBiometria,
+    servicio,
+    telefonoContacto: telPrincipalRaw,
+    numeroPrincipal: princNums[0] || telPrincipalRaw,
+    adicionales: adicNums.join(" | ") || adicRaw,
+  };
+}
 
-  if (!ficha.trim()) {
-    document.getElementById("formDuplicateBanner").classList.add("hidden");
-    return;
-  }
-
-  const { data } = await api("/api/ficha/preview", {
-    method: "POST",
-    body: JSON.stringify({
-      ficha,
-      fecha,
-      ejecutivo,
-      company_slug: state.form.company_slug,
-      operador: state.form.operador,
-      tipo_venta: state.form.tipo_venta,
-    }),
-  });
-
-  const p = data.parsed;
+function applyParsedFichaToPreview(p, duplicateCheck = null) {
   const setIfAuto = (key, val) => {
     if (!state.form.manualEdits[key]) {
       const el = document.getElementById(`ov_${key}`);
@@ -983,12 +1122,106 @@ async function runFichaPreview() {
   }
 
   const dupBanner = document.getElementById("formDuplicateBanner");
-  if (data.duplicateCheck && data.duplicateCheck.duplicate) {
-    dupBanner.innerHTML = `⚠️ <b>Posible duplicada detectada:</b> ${esc(data.duplicateCheck.reason)}`;
+  if (duplicateCheck && duplicateCheck.duplicate) {
+    dupBanner.innerHTML = `⚠️ <b>Posible duplicada detectada:</b> ${esc(duplicateCheck.reason)}`;
     dupBanner.classList.remove("hidden");
   } else {
     dupBanner.classList.add("hidden");
   }
+}
+
+async function runFichaPreview() {
+  const ficha = document.getElementById("formFicha").value;
+  const fecha = document.getElementById("formFecha").value;
+  const ejecutivo = document.getElementById("formEjecutivo").value;
+
+  if (!ficha.trim()) {
+    document.getElementById("formDuplicateBanner").classList.add("hidden");
+    return;
+  }
+
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    applyParsedFichaToPreview(parseFichaOfflineFallback(ficha), null);
+    return;
+  }
+
+  try {
+    const { data } = await api("/api/ficha/preview", {
+      method: "POST",
+      timeoutMs: 8000,
+      body: JSON.stringify({
+        ficha,
+        fecha,
+        ejecutivo,
+        company_slug: state.form.company_slug,
+        operador: state.form.operador,
+        tipo_venta: state.form.tipo_venta,
+      }),
+    });
+    applyParsedFichaToPreview(data.parsed, data.duplicateCheck);
+  } catch {
+    applyParsedFichaToPreview(parseFichaOfflineFallback(ficha), null);
+  }
+}
+
+function collectCurrentFormOverrides() {
+  return {
+    rut: document.getElementById("ov_rut").value.trim(),
+    nombre_cliente: document.getElementById("ov_nombre_cliente").value.trim(),
+    direccion: document.getElementById("ov_direccion").value.trim(),
+    comuna: state.form.es_movil
+      ? document.getElementById("ov_comuna_movil").value.trim()
+      : document.getElementById("ov_comuna").value.trim(),
+    telefono: document.getElementById("ov_telefono").value.trim(),
+    numero_principal: document.getElementById("ov_numero_principal").value.trim(),
+    adicional: document.getElementById("ov_adicional").value.trim(),
+    correo: document.getElementById("ov_correo").value.trim(),
+    id_orden: document.getElementById("ov_id_orden").value.trim(),
+    servicio: document.getElementById("ov_servicio").value.trim(),
+  };
+}
+
+function buildSaleSummary(payload, overrides = {}, parsedFallback = null) {
+  const parsed = parsedFallback || parseFichaOfflineFallback(payload.ficha || "");
+  return {
+    nombre_cliente: overrides.nombre_cliente || parsed.nombreCliente || "",
+    rut: overrides.rut || parsed.rut || "",
+    telefono: overrides.telefono || overrides.numero_principal || parsed.telefonoContacto || parsed.numeroPrincipal || "",
+    numero_principal: overrides.numero_principal || parsed.numeroPrincipal || "",
+    adicional: overrides.adicional || parsed.adicionales || "",
+    servicio: overrides.servicio || parsed.servicio || "",
+    comuna: overrides.comuna || parsed.comuna || "",
+    direccion: overrides.direccion || parsed.direccion || "",
+    id_orden: overrides.id_orden || parsed.codigoBiometria || "",
+  };
+}
+
+function getCompanyHojaLabel(slug, fallbackOperador = "") {
+  const comp = (state.meta && state.meta.companies ? state.meta.companies : []).find((c) => c.slug === slug);
+  return (comp && comp.hoja) || fallbackOperador || slug || "Sin hoja";
+}
+
+function showOfflineSavedFeedback(pendingItem, errorMessage) {
+  const feedback = document.getElementById("formFeedbackBanner");
+  const quotaMsg = pendingItem.imageDroppedForQuota
+    ? `<div style="margin-top:5px; font-size:11.5px;">📷 Nota: La imagen de captura era muy pesada para el navegador, pero toda la ficha de texto quedó guardada. Re-adjunta la captura antes de reenviar si es requerida.</div>`
+    : "";
+  feedback.className = "alert-banner alert-warn";
+  feedback.innerHTML = `
+    <div><b>⚠️ No se pudo conectar al servidor — Tu ficha NO se perdió</b></div>
+    <div style="margin-top:4px;">Motivo: ${esc(errorMessage || "Sin conexión a internet")}.</div>
+    <div style="margin-top:4px;">La venta quedó respaldada localmente en este navegador (<b>Pendientes por reenviar</b>). Puedes reenviarla en cuanto vuelva la conexión.</div>
+    ${quotaMsg}
+    <div class="form-feedback-actions">
+      <button type="button" class="btn btn-primary btn-sm" onclick="window.app.resendPendingSale('${esc(pendingItem.localId)}')">
+        🔄 Reintentar envío ahora
+      </button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="window.app.clearSaleForm(true)">
+        🧹 Limpiar formulario para otra venta
+      </button>
+    </div>
+  `;
+  feedback.classList.remove("hidden");
 }
 
 async function handleFormSubmit(ev, forceDuplicate = false) {
@@ -1006,26 +1239,51 @@ async function handleFormSubmit(ev, forceDuplicate = false) {
   const ejecutivo = document.getElementById("formEjecutivo").value.trim();
   const fecha = document.getElementById("formFecha").value;
   const ficha = document.getElementById("formFicha").value.trim();
+  const overrides = collectCurrentFormOverrides();
+
+  if (!supervisor) {
+    return toast("Selecciona el supervisor de la venta");
+  }
+  if (supervisor === "Otro" && !supervisorOtro) {
+    return toast("Escribe el nombre del supervisor");
+  }
+  if (!ejecutivo) {
+    return toast("Ingresa el nombre del ejecutivo");
+  }
+  if (!ficha && !(overrides.rut || overrides.nombre_cliente || overrides.numero_principal)) {
+    return toast("Pega la ficha de la venta");
+  }
 
   if (document.getElementById("chkRememberExec").checked) {
     localStorage.setItem("fenix_last_sup", supervisor);
     localStorage.setItem("fenix_last_exec", ejecutivo);
   }
 
-  const overrides = {
-    rut: document.getElementById("ov_rut").value.trim(),
-    nombre_cliente: document.getElementById("ov_nombre_cliente").value.trim(),
-    direccion: document.getElementById("ov_direccion").value.trim(),
-    comuna: state.form.es_movil
-      ? document.getElementById("ov_comuna_movil").value.trim()
-      : document.getElementById("ov_comuna").value.trim(),
-    telefono: document.getElementById("ov_telefono").value.trim(),
-    numero_principal: document.getElementById("ov_numero_principal").value.trim(),
-    adicional: document.getElementById("ov_adicional").value.trim(),
-    correo: document.getElementById("ov_correo").value.trim(),
-    id_orden: document.getElementById("ov_id_orden").value.trim(),
-    servicio: document.getElementById("ov_servicio").value.trim(),
+  const payload = {
+    company_slug: state.form.company_slug,
+    operador: state.form.operador,
+    tipo_venta: state.form.tipo_venta,
+    subcompania: state.form.subcompania,
+    hizo_click: state.form.hizo_click,
+    imagen_base64: state.form.imagen_base64,
+    supervisor,
+    supervisor_otro: supervisorOtro,
+    ejecutivo,
+    fecha,
+    ficha,
+    overrides,
+    forzar_duplicada: forceDuplicate,
   };
+  const summary = buildSaleSummary(payload, overrides);
+  const hojaLabel = getCompanyHojaLabel(payload.company_slug, payload.operador);
+
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    const pendingItem = upsertPendingOfflineSale(payload, summary, hojaLabel, "Sin conexión a internet en el navegador.");
+    showOfflineSavedFeedback(pendingItem, "Sin conexión a internet en el navegador.");
+    toast("Sin internet: la ficha quedó guardada en este navegador para reenviarla después.");
+    renderLocalFormBackupUI();
+    return;
+  }
 
   const btn = document.getElementById("btnSubmitSale");
   btn.disabled = true;
@@ -1034,21 +1292,8 @@ async function handleFormSubmit(ev, forceDuplicate = false) {
   try {
     const { status, data } = await api("/api/sales", {
       method: "POST",
-      body: JSON.stringify({
-        company_slug: state.form.company_slug,
-        operador: state.form.operador,
-        tipo_venta: state.form.tipo_venta,
-        subcompania: state.form.subcompania,
-        hizo_click: state.form.hizo_click,
-        imagen_base64: state.form.imagen_base64,
-        supervisor,
-        supervisor_otro: supervisorOtro,
-        ejecutivo,
-        fecha,
-        ficha,
-        overrides,
-        forzar_duplicada: forceDuplicate,
-      }),
+      timeoutMs: 20000,
+      body: JSON.stringify(payload),
     });
 
     if (status === 409 && data.duplicate) {
@@ -1065,6 +1310,10 @@ async function handleFormSubmit(ev, forceDuplicate = false) {
       return;
     }
 
+    removeMatchingPendingSale(state.form.activePendingId, payload);
+    recordSentSaleToHistory(payload, data, summary, hojaLabel);
+    clearFormDraft();
+
     const extraMov = state.form.es_movil
       ? ` (Titular: ${data.sale.cant_titular}, Adic: ${data.sale.cant_adicional})`
       : "";
@@ -1076,10 +1325,18 @@ async function handleFormSubmit(ev, forceDuplicate = false) {
     toast(`Venta guardada en ${data.company.hoja}`);
 
     clearSaleForm(true);
+    renderLocalFormBackupUI();
   } catch (err) {
-    feedback.className = "alert-banner alert-error";
-    feedback.textContent = "❌ " + err.message;
-    feedback.classList.remove("hidden");
+    if (err && err.isNetworkOrServerError) {
+      const pendingItem = upsertPendingOfflineSale(payload, summary, hojaLabel, err.message);
+      showOfflineSavedFeedback(pendingItem, err.message);
+      toast("No se pudo enviar: la ficha quedó respaldada en este navegador.");
+      renderLocalFormBackupUI();
+    } else {
+      feedback.className = "alert-banner alert-error";
+      feedback.textContent = "❌ " + (err ? err.message : "Error al registrar la venta");
+      feedback.classList.remove("hidden");
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = "Registrar Venta";
@@ -1094,6 +1351,7 @@ function clearSaleForm(keepFeedback = false) {
   document.getElementById("formFicha").value = "";
   state.form.imagen_base64 = "";
   state.form.manualEdits = {};
+  state.form.activePendingId = null;
   document.getElementById("clickImagePreview").classList.add("hidden");
   document.getElementById("dropzonePrompt").innerHTML =
     "Haz clic para subir imagen o presiona <b>Ctrl + V</b> para pegar captura";
@@ -1118,6 +1376,7 @@ function clearSaleForm(keepFeedback = false) {
   document.getElementById("dirSourceTag").classList.add("hidden");
   document.getElementById("formDuplicateBanner").classList.add("hidden");
   if (!keepFeedback) document.getElementById("formFeedbackBanner").classList.add("hidden");
+  clearFormDraft();
 }
 
 function fillSampleFicha(mobileSample = false) {
@@ -1151,6 +1410,879 @@ TELÉFONOS CONTACTO: +56 9 6661 3096
 SERVICIOS A CONTRATAR: 600 Megas Fibra Dúo HBO Max`;
   }
   runFichaPreview();
+  scheduleFormDraftSave();
+}
+
+// ============================================================================
+// RESPALDO OFFLINE, BORRADOR E HISTORIAL LOCAL DE VENTAS (/formulario)
+// ============================================================================
+const FORM_PENDING_KEY = "fenix_form_pending_v1";
+const FORM_HISTORY_KEY = "fenix_form_history_v1";
+const FORM_DRAFT_KEY = "fenix_form_draft_v1";
+const MAX_LOCAL_HISTORY = 80;
+let formDraftTimer = null;
+
+function safeReadStorageArray(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function safeWritePendingArray(list) {
+  try {
+    localStorage.setItem(FORM_PENDING_KEY, JSON.stringify(list));
+    return true;
+  } catch {
+    try {
+      const trimmedHistory = safeReadStorageArray(FORM_HISTORY_KEY).slice(0, 15);
+      localStorage.setItem(FORM_HISTORY_KEY, JSON.stringify(trimmedHistory));
+      localStorage.setItem(FORM_PENDING_KEY, JSON.stringify(list));
+      return true;
+    } catch {
+      const stripped = list.map((item) => {
+        if (item && item.payload && item.payload.imagen_base64) {
+          return {
+            ...item,
+            imageDroppedForQuota: true,
+            payload: { ...item.payload, imagen_base64: "" },
+          };
+        }
+        return item;
+      });
+      try {
+        localStorage.setItem(FORM_PENDING_KEY, JSON.stringify(stripped));
+        return false;
+      } catch {
+        return false;
+      }
+    }
+  }
+}
+
+function safeWriteHistoryArray(list) {
+  const capped = list.slice(0, MAX_LOCAL_HISTORY);
+  try {
+    localStorage.setItem(FORM_HISTORY_KEY, JSON.stringify(capped));
+  } catch {
+    for (const limit of [30, 15, 5]) {
+      try {
+        localStorage.setItem(FORM_HISTORY_KEY, JSON.stringify(capped.slice(0, limit)));
+        return;
+      } catch {}
+    }
+  }
+}
+
+function computePayloadFingerprint(payload) {
+  const ov = payload.overrides || {};
+  return [
+    payload.company_slug || "",
+    (payload.supervisor_otro || payload.supervisor || "").trim().toLowerCase(),
+    (payload.ejecutivo || "").trim().toLowerCase(),
+    payload.fecha || "",
+    String(payload.ficha || "").replace(/\s+/g, " ").trim().toLowerCase(),
+    (ov.rut || "").trim().toLowerCase(),
+    (ov.numero_principal || ov.telefono || "").trim(),
+    (ov.id_orden || "").trim().toLowerCase(),
+  ].join("|");
+}
+
+function upsertPendingOfflineSale(payload, summary, hojaLabel, errorMsg) {
+  const list = safeReadStorageArray(FORM_PENDING_KEY);
+  const fp = computePayloadFingerprint(payload);
+  const nowIso = new Date().toISOString();
+  const idx = list.findIndex(
+    (item) => (state.form.activePendingId && item.localId === state.form.activePendingId) || item.fingerprint === fp
+  );
+
+  let savedItem;
+  if (idx >= 0) {
+    savedItem = {
+      ...list[idx],
+      fingerprint: fp,
+      lastAttemptAt: nowIso,
+      lastError: errorMsg || "Sin conexión",
+      attempts: (list[idx].attempts || 1) + 1,
+      hoja: hojaLabel,
+      es_movil: !!state.form.es_movil,
+      brandId: state.form.brandId || list[idx].brandId || "",
+      variantId: state.form.variantId || list[idx].variantId || "",
+      payload: { ...payload },
+      summary: { ...summary },
+    };
+    list.splice(idx, 1);
+    list.unshift(savedItem);
+  } else {
+    savedItem = {
+      localId: "pend_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      fingerprint: fp,
+      createdAt: nowIso,
+      lastAttemptAt: nowIso,
+      lastError: errorMsg || "Sin conexión",
+      attempts: 1,
+      imageDroppedForQuota: false,
+      duplicateReason: "",
+      hoja: hojaLabel,
+      es_movil: !!state.form.es_movil,
+      brandId: state.form.brandId || "",
+      variantId: state.form.variantId || "",
+      payload: { ...payload },
+      summary: { ...summary },
+    };
+    list.unshift(savedItem);
+  }
+
+  state.form.activePendingId = savedItem.localId;
+  state.form.localHistoryTab = "pending";
+  const fitWithImg = safeWritePendingArray(list);
+  if (!fitWithImg) {
+    const refreshed = safeReadStorageArray(FORM_PENDING_KEY);
+    const updated = refreshed.find((x) => x.localId === savedItem.localId);
+    if (updated) savedItem = updated;
+  }
+  return savedItem;
+}
+
+function removeMatchingPendingSale(activePendingId, payload) {
+  const list = safeReadStorageArray(FORM_PENDING_KEY);
+  if (list.length === 0) return;
+  const fp = payload ? computePayloadFingerprint(payload) : "";
+  const next = list.filter(
+    (item) =>
+      !(activePendingId && item.localId === activePendingId) &&
+      !(fp && item.fingerprint === fp)
+  );
+  if (next.length !== list.length) {
+    safeWritePendingArray(next);
+  }
+}
+
+function recordSentSaleToHistory(payload, serverResp, summary, hojaLabel, customStatus = "Enviada") {
+  const list = safeReadStorageArray(FORM_HISTORY_KEY);
+  const sale = (serverResp && serverResp.sale) || {};
+  const comp = (serverResp && serverResp.company) || {};
+  const entry = {
+    localId: "hist_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+    serverId: sale.id || null,
+    sentAt: new Date().toISOString(),
+    hoja: comp.hoja || hojaLabel,
+    company_slug: comp.slug || payload.company_slug || "",
+    supervisor: sale.supervisor || (payload.supervisor === "Otro" ? payload.supervisor_otro : payload.supervisor) || "",
+    ejecutivo: sale.ejecutivo || payload.ejecutivo || "",
+    fecha: sale.fecha || payload.fecha || "",
+    nombre_cliente: sale.nombre_cliente || summary.nombre_cliente || "",
+    rut: sale.rut || summary.rut || "",
+    telefono: sale.telefono || sale.numero_principal || summary.telefono || summary.numero_principal || "",
+    servicio: sale.servicio || summary.servicio || "",
+    id_orden: sale.id_orden || summary.id_orden || "",
+    comuna: sale.comuna || summary.comuna || "",
+    direccion: sale.direccion || summary.direccion || "",
+    ficha: payload.ficha || "",
+    statusLabel: customStatus,
+  };
+  list.unshift(entry);
+  safeWriteHistoryArray(list);
+}
+
+function scheduleFormDraftSave() {
+  if (state.form.restoringDraft || state.vista !== "formulario") return;
+  clearTimeout(formDraftTimer);
+  formDraftTimer = setTimeout(saveFormDraftNow, 250);
+}
+
+function saveFormDraftNow() {
+  if (state.form.restoringDraft) return;
+  const fichaEl = document.getElementById("formFicha");
+  if (!fichaEl) return;
+  const overrides = collectCurrentFormOverrides();
+  const hasContent =
+    fichaEl.value.trim().length > 0 ||
+    Object.values(overrides).some((v) => String(v || "").trim().length > 0) ||
+    Boolean(state.form.imagen_base64);
+
+  if (!hasContent) {
+    clearFormDraft();
+    return;
+  }
+
+  const draft = {
+    savedAt: new Date().toISOString(),
+    brandId: state.form.brandId || "",
+    variantId: state.form.variantId || "",
+    hizo_click: state.form.hizo_click || "",
+    supervisor: document.getElementById("formSupervisor")?.value || "",
+    supervisorOtro: document.getElementById("formSupervisorOtro")?.value || "",
+    ejecutivo: document.getElementById("formEjecutivo")?.value || "",
+    fecha: document.getElementById("formFecha")?.value || "",
+    ficha: fichaEl.value,
+    imagen_base64: state.form.imagen_base64 || "",
+    manualEdits: { ...(state.form.manualEdits || {}) },
+    activePendingId: state.form.activePendingId || null,
+    overrides,
+  };
+
+  try {
+    localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(draft));
+  } catch {
+    try {
+      draft.imagen_base64 = "";
+      localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(draft));
+    } catch {}
+  }
+}
+
+function clearFormDraft() {
+  try {
+    localStorage.removeItem(FORM_DRAFT_KEY);
+  } catch {}
+}
+
+function applySavedValuesToForm({
+  brandId,
+  variantId,
+  company_slug,
+  hizo_click,
+  supervisor,
+  supervisorOtro,
+  ejecutivo,
+  fecha,
+  ficha,
+  imagen_base64,
+  manualEdits,
+  overrides,
+  activePendingId = null,
+}) {
+  state.form.restoringDraft = true;
+  try {
+    const groups = (state.meta && state.meta.brandGroups) || [];
+    let targetBrand = groups.find((g) => g.brandId === brandId);
+    let targetVariant = targetBrand && (targetBrand.variants || []).find((v) => v.id === variantId);
+    if (!targetVariant && company_slug) {
+      for (const g of groups) {
+        const found = (g.variants || []).find((v) => v.company_slug === company_slug);
+        if (found) {
+          targetBrand = g;
+          targetVariant = found;
+          break;
+        }
+      }
+    }
+    if (targetBrand) {
+      selectBrand(targetBrand.brandId);
+    }
+    if (targetVariant) {
+      applyVariantSelection(targetVariant);
+      renderBrandVariants();
+    }
+    if (hizo_click && state.form.ask_click) {
+      selectClickOption(hizo_click);
+    }
+
+    const supEl = document.getElementById("formSupervisor");
+    if (supEl && supervisor) {
+      supEl.value = supervisor;
+      onFormSupervisorChange();
+      if (supervisor === "Otro" && supervisorOtro) {
+        document.getElementById("formSupervisorOtro").value = supervisorOtro;
+      }
+    }
+    if (ejecutivo) document.getElementById("formEjecutivo").value = ejecutivo;
+    if (fecha) document.getElementById("formFecha").value = fecha;
+    document.getElementById("formFicha").value = ficha || "";
+
+    state.form.imagen_base64 = imagen_base64 || "";
+    const img = document.getElementById("clickImagePreview");
+    const promptEl = document.getElementById("dropzonePrompt");
+    if (imagen_base64 && img && promptEl) {
+      img.src = imagen_base64;
+      img.classList.remove("hidden");
+      promptEl.textContent = "Imagen restaurada (clic para cambiar)";
+    } else if (img && promptEl) {
+      img.classList.add("hidden");
+      promptEl.innerHTML = "Haz clic para subir imagen o presiona <b>Ctrl + V</b> para pegar captura";
+    }
+
+    state.form.manualEdits = { ...(manualEdits || {}) };
+    state.form.activePendingId = activePendingId;
+
+    const ov = overrides || {};
+    for (const key of [
+      "rut",
+      "nombre_cliente",
+      "direccion",
+      "comuna",
+      "telefono",
+      "numero_principal",
+      "adicional",
+      "correo",
+      "id_orden",
+      "servicio",
+    ]) {
+      const el = document.getElementById(`ov_${key}`);
+      if (el) el.value = ov[key] || "";
+    }
+    const cm = document.getElementById("ov_comuna_movil");
+    if (cm) cm.value = ov.comuna || "";
+    refreshMobileLinesCounter();
+  } finally {
+    state.form.restoringDraft = false;
+  }
+}
+
+function restoreFormDraft() {
+  try {
+    const raw = localStorage.getItem(FORM_DRAFT_KEY);
+    if (!raw) return;
+    const draft = JSON.parse(raw);
+    if (!draft) return;
+    const hasText =
+      String(draft.ficha || "").trim() ||
+      Object.values(draft.overrides || {}).some((v) => String(v || "").trim());
+    if (!hasText) return;
+    applySavedValuesToForm(draft);
+    toast("Se recuperó el borrador que estabas escribiendo.");
+  } catch {}
+}
+
+function syncDefaultLocalHistoryTab() {
+  const pending = safeReadStorageArray(FORM_PENDING_KEY);
+  const sent = safeReadStorageArray(FORM_HISTORY_KEY);
+  if (pending.length > 0) {
+    state.form.localHistoryTab = "pending";
+  } else if (sent.length > 0) {
+    state.form.localHistoryTab = "sent";
+  } else {
+    state.form.localHistoryTab = "pending";
+  }
+}
+
+function setLocalHistoryTab(mode) {
+  state.form.localHistoryTab = mode === "sent" ? "sent" : "pending";
+  renderLocalFormBackupUI();
+}
+
+function formatLocalDateTime(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  if (Number.isNaN(d.getTime())) return String(isoStr);
+  return d.toLocaleString("es-CL", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function renderLocalFormBackupUI() {
+  const banner = document.getElementById("offlinePendingGlobalBanner");
+  const pendingBadge = document.getElementById("pendingCountBadge");
+  const sentBadge = document.getElementById("sentCountBadge");
+  const tabsWrap = document.getElementById("localHistoryTabs");
+  const actionsBar = document.getElementById("localHistoryActionsBar");
+  const listEl = document.getElementById("localHistoryList");
+  if (!listEl) return;
+
+  const pending = safeReadStorageArray(FORM_PENDING_KEY);
+  const sent = safeReadStorageArray(FORM_HISTORY_KEY);
+  const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+
+  if (pendingBadge) pendingBadge.textContent = String(pending.length);
+  if (sentBadge) sentBadge.textContent = String(sent.length);
+
+  if (tabsWrap) {
+    tabsWrap.querySelectorAll(".local-tab-btn").forEach((btn) => {
+      const m = btn.dataset.mode;
+      btn.classList.toggle("active", m === state.form.localHistoryTab);
+      if (m === "pending") btn.classList.toggle("has-pending", pending.length > 0);
+    });
+  }
+
+  if (banner) {
+    if (pending.length > 0) {
+      banner.className = `offline-pending-banner ${isOffline ? "is-offline" : "is-online"}`;
+      banner.innerHTML = isOffline
+        ? `
+          <div class="offline-pending-text">
+            <strong>📡 Sin conexión · Tienes ${pending.length} venta(s) respaldada(s) en este navegador</strong>
+            <span>No cierres ni borres los datos del navegador. Podrás reenviarlas en cuanto vuelva internet.</span>
+          </div>
+          <div class="offline-pending-actions">
+            <button type="button" class="btn btn-outline btn-sm" onclick="window.app.scrollToPendingHistory()">
+              Ver pendientes (${pending.length})
+            </button>
+          </div>
+        `
+        : `
+          <div class="offline-pending-text">
+            <strong>🌐 ¡Conexión disponible! Tienes ${pending.length} venta(s) pendiente(s) por reenviar</strong>
+            <span>Quedaron guardadas tras un fallo previo. Puedes enviarlas ahora con un clic.</span>
+          </div>
+          <div class="offline-pending-actions">
+            <button type="button" class="btn btn-primary btn-sm" ${state.form.isResendingAll ? "disabled" : ""} onclick="window.app.resendAllPendingSales()">
+              ${state.form.isResendingAll ? "Reenviando..." : `🚀 Reenviar todas (${pending.length})`}
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="window.app.scrollToPendingHistory()">
+              Revisar lista
+            </button>
+          </div>
+        `;
+      banner.classList.remove("hidden");
+    } else if (isOffline) {
+      banner.className = "offline-pending-banner is-offline";
+      banner.innerHTML = `
+        <div class="offline-pending-text">
+          <strong>📡 Modo sin conexión activo</strong>
+          <span>Si presionas "Registrar Venta" sin internet, la ficha se guardará en este navegador para reenviarla después.</span>
+        </div>
+      `;
+      banner.classList.remove("hidden");
+    } else {
+      banner.classList.add("hidden");
+    }
+  }
+
+  if (state.form.localHistoryTab === "pending") {
+    if (actionsBar) {
+      if (pending.length > 0) {
+        actionsBar.classList.remove("hidden");
+        actionsBar.innerHTML = `
+          <span style="font-size:12px; color:#64748b;">
+            ${pending.length} ficha(s) esperando envío al servidor
+          </span>
+          <button type="button" class="btn btn-primary btn-sm" ${state.form.isResendingAll ? "disabled" : ""} onclick="window.app.resendAllPendingSales()">
+            ${state.form.isResendingAll ? "Reenviando..." : "🚀 Reenviar todas"}
+          </button>
+        `;
+      } else {
+        actionsBar.classList.add("hidden");
+      }
+    }
+
+    if (pending.length === 0) {
+      listEl.innerHTML = `
+        <div class="local-history-empty">
+          No hay ventas pendientes de envío. Si alguna falla por corte de internet o del servidor, aparecerá aquí automáticamente.
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = pending
+      .map((item) => {
+        const s = item.summary || {};
+        const p = item.payload || {};
+        const supName = p.supervisor === "Otro" ? p.supervisor_otro || "Otro" : p.supervisor || "";
+        const clientLabel = s.nombre_cliente || s.rut || s.telefono || "Ficha guardada";
+        const isDup = Boolean(item.duplicateReason);
+        return `
+          <div class="local-sale-item is-pending ${isDup ? "is-duplicate-warn" : ""}">
+            <div class="local-sale-main">
+              <div class="local-sale-top">
+                <span class="local-sale-badge pending">⏳ Pendiente de envío</span>
+                <span class="local-sale-sheet">${esc(item.hoja)}</span>
+                <span class="local-sale-time">Guardada: ${esc(formatLocalDateTime(item.createdAt))} · Intentos: ${item.attempts || 1}</span>
+              </div>
+              <div class="local-sale-title">${esc(clientLabel)} ${s.rut ? `· RUT ${esc(s.rut)}` : ""}</div>
+              <div class="local-sale-sub">
+                Ejecutivo: <b>${esc(p.ejecutivo || "-")}</b> (${esc(supName || "-")})
+                ${s.telefono ? ` · Tel: ${esc(s.telefono)}` : ""}
+                ${s.servicio ? ` · Plan: ${esc(s.servicio)}` : ""}
+              </div>
+              ${item.lastError ? `<div class="local-sale-error">Último aviso: ${esc(item.lastError)}</div>` : ""}
+              ${
+                isDup
+                  ? `<div class="local-sale-error">⛔ Posible duplicada al reintentar: ${esc(item.duplicateReason)}</div>`
+                  : ""
+              }
+            </div>
+            <div class="local-sale-actions">
+              ${
+                isDup
+                  ? `
+                    <button type="button" class="btn btn-primary btn-sm" onclick="window.app.resendPendingSale('${esc(item.localId)}', true)">
+                      Forzar envío
+                    </button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="window.app.confirmPendingAlreadyRegistered('${esc(item.localId)}')">
+                      Ya estaba subida
+                    </button>
+                  `
+                  : `
+                    <button type="button" class="btn btn-primary btn-sm" onclick="window.app.resendPendingSale('${esc(item.localId)}')">
+                      🔄 Reenviar
+                    </button>
+                  `
+              }
+              <button type="button" class="btn btn-outline btn-sm" onclick="window.app.loadPendingIntoForm('${esc(item.localId)}')">
+                Cargar arriba
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="window.app.viewLocalSaleDetail('pending', '${esc(item.localId)}')">
+                Ver ficha
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="window.app.discardPendingSale('${esc(item.localId)}')">
+                Descartar
+              </button>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+    return;
+  }
+
+  // Tab: "sent" (Historial local de ventas enviadas desde este navegador)
+  if (actionsBar) {
+    if (sent.length > 0) {
+      actionsBar.classList.remove("hidden");
+      actionsBar.innerHTML = `
+        <span style="font-size:12px; color:#64748b;">
+          Últimas ${sent.length} venta(s) enviadas desde este navegador
+        </span>
+        <button type="button" class="btn btn-outline btn-sm" onclick="window.app.clearSentHistory()">
+          Limpiar historial enviado
+        </button>
+      `;
+    } else {
+      actionsBar.classList.add("hidden");
+    }
+  }
+
+  if (sent.length === 0) {
+    listEl.innerHTML = `
+      <div class="local-history-empty">
+        Aún no has registrado ventas desde este navegador. Cada venta enviada exitosamente aparecerá aquí como respaldo.
+      </div>
+    `;
+    return;
+  }
+
+  listEl.innerHTML = sent
+    .map((item) => {
+      const title = item.nombre_cliente || item.rut || item.telefono || "Venta registrada";
+      return `
+        <div class="local-sale-item">
+          <div class="local-sale-main">
+            <div class="local-sale-top">
+              <span class="local-sale-badge sent">✅ ${esc(item.statusLabel || "Enviada")}</span>
+              <span class="local-sale-sheet">${esc(item.hoja)}</span>
+              <span class="local-sale-time">${esc(formatLocalDateTime(item.sentAt))}${item.serverId ? ` · ID #${esc(item.serverId)}` : ""}</span>
+            </div>
+            <div class="local-sale-title">${esc(title)} ${item.rut ? `· RUT ${esc(item.rut)}` : ""}</div>
+            <div class="local-sale-sub">
+              Ejecutivo: <b>${esc(item.ejecutivo || "-")}</b> (${esc(item.supervisor || "-")})
+              ${item.telefono ? ` · Tel: ${esc(item.telefono)}` : ""}
+              ${item.servicio ? ` · Plan: ${esc(item.servicio)}` : ""}
+            </div>
+          </div>
+          <div class="local-sale-actions">
+            <button type="button" class="btn btn-outline btn-sm" onclick="window.app.viewLocalSaleDetail('sent', '${esc(item.localId)}')">
+              Ver ficha
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="window.app.copyLocalSaleFicha('sent', '${esc(item.localId)}')">
+              Copiar ficha
+            </button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function scrollToPendingHistory() {
+  state.form.localHistoryTab = "pending";
+  renderLocalFormBackupUI();
+  const el = document.getElementById("localFormHistorySection");
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function resendPendingSale(localId, forceDuplicate = false) {
+  const list = safeReadStorageArray(FORM_PENDING_KEY);
+  const idx = list.findIndex((x) => x.localId === localId);
+  if (idx < 0) return;
+
+  const item = list[idx];
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    toast("Sigues sin conexión a internet. Intenta cuando vuelva la señal.");
+    renderLocalFormBackupUI();
+    return;
+  }
+
+  const payloadToSend = { ...(item.payload || {}), forzar_duplicada: Boolean(forceDuplicate) };
+  try {
+    const { status, data } = await api("/api/sales", {
+      method: "POST",
+      timeoutMs: 20000,
+      body: JSON.stringify(payloadToSend),
+    });
+
+    if (status === 409 && data && data.duplicate) {
+      list[idx] = {
+        ...item,
+        duplicateReason: data.reason || "Venta ya registrada previamente.",
+        lastAttemptAt: new Date().toISOString(),
+      };
+      safeWritePendingArray(list);
+      state.form.localHistoryTab = "pending";
+      renderLocalFormBackupUI();
+      toast("El sistema detectó una posible duplicada. Revisa la tarjeta pendiente.");
+      return { ok: false, duplicate: true };
+    }
+
+    const updatedList = safeReadStorageArray(FORM_PENDING_KEY).filter((x) => x.localId !== localId);
+    safeWritePendingArray(updatedList);
+    recordSentSaleToHistory(payloadToSend, data, item.summary || {}, item.hoja);
+
+    if (
+      state.form.activePendingId === localId ||
+      computePayloadFingerprint(payloadToSend) === computePayloadFingerprint({
+        company_slug: state.form.company_slug,
+        supervisor: document.getElementById("formSupervisor")?.value || "",
+        supervisor_otro: document.getElementById("formSupervisorOtro")?.value.trim() || "",
+        ejecutivo: document.getElementById("formEjecutivo")?.value.trim() || "",
+        fecha: document.getElementById("formFecha")?.value || "",
+        ficha: document.getElementById("formFicha")?.value.trim() || "",
+        overrides: collectCurrentFormOverrides(),
+      })
+    ) {
+      clearSaleForm(true);
+    }
+
+    const feedback = document.getElementById("formFeedbackBanner");
+    if (feedback) {
+      feedback.className = "alert-banner alert-ok";
+      feedback.innerHTML = `✅ <b>¡Venta pendiente reenviada a ${esc(data.company.hoja)}!</b> Cliente: <b>${esc(
+        data.sale.nombre_cliente || data.sale.rut || "Registrada"
+      )}</b>.`;
+      feedback.classList.remove("hidden");
+    }
+    toast(`Venta reenviada a ${data.company.hoja}`);
+    if (updatedList.length === 0) state.form.localHistoryTab = "sent";
+    renderLocalFormBackupUI();
+    return { ok: true };
+  } catch (err) {
+    const latestList = safeReadStorageArray(FORM_PENDING_KEY);
+    const curIdx = latestList.findIndex((x) => x.localId === localId);
+    if (curIdx >= 0) {
+      latestList[curIdx] = {
+        ...latestList[curIdx],
+        lastAttemptAt: new Date().toISOString(),
+        lastError: err.message || "Error de conexión",
+        attempts: (latestList[curIdx].attempts || 1) + 1,
+      };
+      safeWritePendingArray(latestList);
+    }
+    renderLocalFormBackupUI();
+    toast("No se pudo reenviar todavía: " + (err.message || "Error de conexión"));
+    return { ok: false, error: err };
+  }
+}
+
+async function resendAllPendingSales() {
+  if (state.form.isResendingAll) return;
+  const initial = safeReadStorageArray(FORM_PENDING_KEY);
+  if (initial.length === 0) return;
+
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    toast("Aún no tienes conexión a internet.");
+    return;
+  }
+
+  state.form.isResendingAll = true;
+  renderLocalFormBackupUI();
+
+  let sentCount = 0;
+  let dupCount = 0;
+  let failed = false;
+
+  for (const item of initial) {
+    if (item.duplicateReason) {
+      dupCount++;
+      continue;
+    }
+    const res = await resendPendingSale(item.localId, false);
+    if (res && res.ok) {
+      sentCount++;
+    } else if (res && res.duplicate) {
+      dupCount++;
+    } else {
+      failed = true;
+      break;
+    }
+  }
+
+  state.form.isResendingAll = false;
+  renderLocalFormBackupUI();
+
+  if (sentCount > 0 && !failed && dupCount === 0) {
+    toast(`Se reenviaron ${sentCount} venta(s) pendiente(s) correctamente.`);
+  } else if (dupCount > 0) {
+    toast(`Reenviadas: ${sentCount}. Revisa ${dupCount} posible(s) duplicada(s).`);
+  }
+}
+
+function confirmPendingAlreadyRegistered(localId) {
+  const list = safeReadStorageArray(FORM_PENDING_KEY);
+  const item = list.find((x) => x.localId === localId);
+  if (!item) return;
+  const next = list.filter((x) => x.localId !== localId);
+  safeWritePendingArray(next);
+  recordSentSaleToHistory(
+    item.payload || {},
+    { company: { hoja: item.hoja, slug: item.payload?.company_slug } },
+    item.summary || {},
+    item.hoja,
+    "Confirmada en sistema"
+  );
+  if (state.form.activePendingId === localId) state.form.activePendingId = null;
+  if (next.length === 0) state.form.localHistoryTab = "sent";
+  renderLocalFormBackupUI();
+  toast("Quitada de pendientes y registrada en historial.");
+}
+
+function loadPendingIntoForm(localId) {
+  const list = safeReadStorageArray(FORM_PENDING_KEY);
+  const item = list.find((x) => x.localId === localId);
+  if (!item) return;
+  const p = item.payload || {};
+  applySavedValuesToForm({
+    brandId: item.brandId,
+    variantId: item.variantId,
+    company_slug: p.company_slug,
+    hizo_click: p.hizo_click,
+    supervisor: p.supervisor,
+    supervisorOtro: p.supervisor_otro,
+    ejecutivo: p.ejecutivo,
+    fecha: p.fecha,
+    ficha: p.ficha,
+    imagen_base64: p.imagen_base64,
+    manualEdits: {
+      rut: true,
+      nombre_cliente: true,
+      direccion: true,
+      comuna: true,
+      telefono: true,
+      numero_principal: true,
+      adicional: true,
+      correo: true,
+      id_orden: true,
+      servicio: true,
+    },
+    overrides: p.overrides || {},
+    activePendingId: item.localId,
+  });
+  scheduleFormDraftSave();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  toast("Ficha cargada en el formulario.");
+}
+
+function discardPendingSale(localId) {
+  if (!confirm("¿Eliminar esta venta pendiente guardada en este navegador? No se enviará al servidor.")) return;
+  const list = safeReadStorageArray(FORM_PENDING_KEY).filter((x) => x.localId !== localId);
+  safeWritePendingArray(list);
+  if (state.form.activePendingId === localId) state.form.activePendingId = null;
+  renderLocalFormBackupUI();
+  toast("Venta pendiente descartada.");
+}
+
+function clearSentHistory() {
+  if (!confirm("¿Limpiar la lista de ventas ya enviadas en este navegador? Las pendientes NO se borrarán.")) return;
+  safeWriteHistoryArray([]);
+  renderLocalFormBackupUI();
+  toast("Historial enviado limpiado.");
+}
+
+function viewLocalSaleDetail(mode, localId) {
+  const list = safeReadStorageArray(mode === "pending" ? FORM_PENDING_KEY : FORM_HISTORY_KEY);
+  const item = list.find((x) => x.localId === localId);
+  if (!item) return;
+
+  const isPending = mode === "pending";
+  const p = isPending ? item.payload || {} : item;
+  const s = isPending ? item.summary || {} : item;
+  const titleEl = document.getElementById("modalSearchTitle");
+  const bodyEl = document.getElementById("modalSearchBody");
+  if (!titleEl || !bodyEl) return;
+
+  titleEl.textContent = isPending ? `⏳ Venta Pendiente — ${item.hoja}` : `✅ Venta Enviada — ${item.hoja}`;
+  bodyEl.innerHTML = `
+    <div style="display:grid; gap:8px; font-size:13px;">
+      <div><b>Cliente:</b> ${esc(s.nombre_cliente || "-")} &nbsp;|&nbsp; <b>RUT:</b> ${esc(s.rut || "-")}</div>
+      <div><b>Ejecutivo:</b> ${esc(p.ejecutivo || "-")} &nbsp;|&nbsp; <b>Supervisor:</b> ${esc(
+    p.supervisor === "Otro" ? p.supervisor_otro : p.supervisor || "-"
+  )}</div>
+      <div><b>Teléfono:</b> ${esc(s.telefono || s.numero_principal || "-")} &nbsp;|&nbsp; <b>Plan:</b> ${esc(s.servicio || "-")}</div>
+      <div><b>Dirección:</b> ${esc(s.direccion || "-")} ${s.comuna ? `(${esc(s.comuna)})` : ""}</div>
+      <div style="margin-top:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <b>Ficha original:</b>
+          <button type="button" class="btn btn-outline btn-sm" onclick="window.app.copyLocalSaleFicha('${esc(mode)}', '${esc(localId)}')">
+            Copiar ficha
+          </button>
+        </div>
+        <pre style="white-space:pre-wrap; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px; font-family:inherit; font-size:12px; max-height:280px; overflow:auto;">${esc(
+          isPending ? p.ficha || "(Sin texto de ficha)" : item.ficha || "(Sin texto de ficha)"
+        )}</pre>
+      </div>
+    </div>
+  `;
+  document.getElementById("modalSearch").classList.remove("hidden");
+}
+
+async function copyLocalSaleFicha(mode, localId) {
+  const list = safeReadStorageArray(mode === "pending" ? FORM_PENDING_KEY : FORM_HISTORY_KEY);
+  const item = list.find((x) => x.localId === localId);
+  if (!item) return;
+  const text = mode === "pending" ? item.payload?.ficha || "" : item.ficha || "";
+  if (!text) return toast("Esta entrada no tiene texto de ficha para copiar.");
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Ficha copiada al portapapeles.");
+  } catch {
+    toast("No se pudo copiar automáticamente.");
+  }
+}
+
+function updateFormularioOnlineStatusUI() {
+  const statusEl = document.getElementById("liveStatus");
+  if (!statusEl || state.vista !== "formulario") return;
+  const online = typeof navigator === "undefined" || navigator.onLine !== false;
+  if (!online) {
+    statusEl.innerHTML = `<span class="dot-live offline"></span> Sin conexión · Respaldo local activo`;
+  } else if (state.meta && state.meta._offlineCached) {
+    statusEl.innerHTML = `<span class="dot-live offline"></span> Servidor sin respuesta · Modo respaldo`;
+  } else {
+    statusEl.innerHTML = `<span class="dot-live"></span> En línea`;
+  }
+  renderLocalFormBackupUI();
+}
+
+function setupFormularioNetworkMonitor() {
+  updateFormularioOnlineStatusUI();
+  if (window._fenixFormNetBound) return;
+  window._fenixFormNetBound = true;
+
+  window.addEventListener("offline", () => {
+    updateFormularioOnlineStatusUI();
+    toast("Se perdió la conexión. Si registras ventas, se guardarán en este navegador.");
+  });
+
+  window.addEventListener("online", async () => {
+    updateFormularioOnlineStatusUI();
+    if (state.meta && state.meta._offlineCached) {
+      try {
+        await loadBootstrap();
+      } catch {}
+    }
+    const pending = safeReadStorageArray(FORM_PENDING_KEY);
+    if (pending.length > 0) {
+      toast(`¡Volvió la conexión! Tienes ${pending.length} venta(s) pendiente(s) lista(s) para reenviar.`);
+    } else {
+      toast("Conexión a internet restablecida.");
+    }
+  });
 }
 
 // ============================================================================
@@ -1298,9 +2430,15 @@ function renderSheetTable(data) {
   `;
 
   const tbody = document.getElementById("sheetTbody");
-  const estadosOpciones = comp.usa_portado
-    ? ["Pendiente", "Portado", "Instalado", "Cancelado", "No Realizado"]
-    : ["Pendiente", "Instalado", "Cancelado", "No Realizado"];
+  const esHojaMovil = !!(
+    comp.usa_portado ||
+    (comp.slug && comp.slug.includes("movil")) ||
+    (comp.hoja && comp.hoja.toLowerCase().includes("movil")) ||
+    state.vista === "moviles"
+  );
+  const estadosOpciones = esHojaMovil
+    ? ["Pendiente", "Portado", "Cancelado", "No Realizado"]
+    : ["Pendiente", "Iniciado", "Instalado", "Cancelado", "No Realizado"];
 
   const pageSize = data.pageSize;
   const totalPages = data.totalPages;
@@ -1343,6 +2481,7 @@ function renderSheetTable(data) {
     const estLow = String(row.estado || "").toLowerCase();
     let rowClass = "data-row";
     if (estLow.includes("instalad")) rowClass += " row-status-instalado";
+    else if (estLow.includes("iniciad")) rowClass += " row-status-iniciado";
     else if (estLow.includes("portad")) rowClass += " row-status-portado";
     else if (estLow.includes("cancel") || estLow.includes("rechaz") || estLow.includes("anulad")) rowClass += " row-status-cancelado";
     else if (estLow.includes("no realiz") || estLow.includes("no-realiz")) rowClass += " row-status-norealizado";
@@ -1367,7 +2506,15 @@ function renderSheetTable(data) {
       const val = row[c.key] ?? "";
       if (c.type === "status") {
         if (canChangeStatus) {
-          const opts = estadosOpciones.includes(val) ? estadosOpciones : [val, ...estadosOpciones];
+          let opts = [...estadosOpciones];
+          if (esHojaMovil) {
+            opts = opts.filter((o) => !o.toLowerCase().includes("instalad"));
+          } else {
+            opts = opts.filter((o) => !o.toLowerCase().includes("portad"));
+          }
+          if (val && !opts.includes(val) && !(esHojaMovil && val.toLowerCase().includes("instalad")) && !(!esHojaMovil && val.toLowerCase().includes("portad"))) {
+            opts.unshift(val);
+          }
           html += `
             <td>
               <select class="status-select" onchange="window.app.changeRowStatus(${row.id}, this.value, this)">
@@ -1429,6 +2576,7 @@ async function changeRowStatus(id, newStatus, selectEl) {
     tr.className = "data-row";
     const low = newStatus.toLowerCase();
     if (low.includes("instalad")) tr.classList.add("row-status-instalado");
+    else if (low.includes("iniciad")) tr.classList.add("row-status-iniciado");
     else if (low.includes("portad")) tr.classList.add("row-status-portado");
     else if (low.includes("cancel") || low.includes("rechaz") || low.includes("anulad")) tr.classList.add("row-status-cancelado");
     else if (low.includes("no realiz") || low.includes("no-realiz")) tr.classList.add("row-status-norealizado");
@@ -2514,6 +3662,16 @@ window.app = {
   forceSubmitDuplicate,
   clearSaleForm,
   fillSampleFicha,
+  setLocalHistoryTab,
+  scrollToPendingHistory,
+  resendPendingSale,
+  resendAllPendingSales,
+  confirmPendingAlreadyRegistered,
+  loadPendingIntoForm,
+  discardPendingSale,
+  clearSentHistory,
+  viewLocalSaleDetail,
+  copyLocalSaleFicha,
   selectCompanyTab,
   debouncedLoadSheet,
   loadActiveSheet,

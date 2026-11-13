@@ -56,7 +56,21 @@
   background-color: #e2f4e7 !important;
 }
 
-/* 2. CANCELADAS Y NO REALIZADAS -> Rojo claro suave y legible */
+/* 2. INICIADO -> Azul pastel suave, limpio y agradable a la vista */
+.fenix-grid tr.row-status-iniciado td,
+.fenix-grid tr.row-status-iniciado:nth-child(even) td {
+  background-color: #eaf3ff !important;
+  color: #1e3a8a;
+}
+.fenix-grid tr.row-status-iniciado:hover td {
+  background-color: #d7e8fe !important;
+}
+.fenix-grid tr.row-status-iniciado td.row-actions-cell,
+.fenix-grid tr.row-status-iniciado td:nth-child(2) {
+  background-color: #deecfd !important;
+}
+
+/* 3. CANCELADAS Y NO REALIZADAS -> Rojo claro suave y legible */
 .fenix-grid tr.row-status-cancelado td,
 .fenix-grid tr.row-status-norealizado td,
 .fenix-grid tr.row-status-cancelado:nth-child(even) td,
@@ -82,6 +96,12 @@
   background:#d1f2d9 !important;
   color:#0f4a25 !important;
   border:1px solid #a7e3b5 !important;
+}
+.row-status-iniciado .status-select,
+.row-status-iniciado .status-readonly-pill {
+  background:#dbeafe !important;
+  color:#1e40af !important;
+  border:1px solid #93c5fd !important;
 }
 .row-status-cancelado .status-select,.row-status-norealizado .status-select,
 .row-status-cancelado .status-readonly-pill,.row-status-norealizado .status-readonly-pill {

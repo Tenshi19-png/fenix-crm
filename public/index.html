@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css" />
-  <link rel="stylesheet" href="/sheets.css" />
+  <link rel="stylesheet" href="/styles.css?v=20261113c" />
+  <link rel="stylesheet" href="/sheets.css?v=20261113c" />
 </head>
 <body>
   <!-- PANTALLA DE CONTROL DE ACCESO POR CORREO (ESTILO GOOGLE SHEETS) -->
@@ -137,6 +137,7 @@
   <main class="workspace" id="mainWorkspace">
     <!-- ==================== 1. FORMULARIO AISLADO (/formulario) ==================== -->
     <section id="tab-formulario" class="tab-panel hidden">
+      <div id="offlinePendingGlobalBanner" class="offline-pending-banner hidden"></div>
       <div class="form-layout">
         <div class="form-card">
           <div class="form-card-header">
@@ -342,6 +343,25 @@
           </div>
         </aside>
       </div>
+
+      <section id="localFormHistorySection" class="local-history-card">
+        <div class="local-history-header">
+          <div>
+            <h3>📦 Respaldo Offline e Historial Local</h3>
+            <p>Las ventas registradas aquí se guardan en este navegador. Si falla el internet o el servidor, quedan respaldadas para reenviarlas sin perder la ficha.</p>
+          </div>
+          <div class="local-history-tabs" id="localHistoryTabs">
+            <button type="button" class="local-tab-btn active" data-mode="pending" onclick="window.app.setLocalHistoryTab('pending')">
+              ⏳ Pendientes <span id="pendingCountBadge" class="count-pill">0</span>
+            </button>
+            <button type="button" class="local-tab-btn" data-mode="sent" onclick="window.app.setLocalHistoryTab('sent')">
+              ✅ Enviadas <span id="sentCountBadge" class="count-pill">0</span>
+            </button>
+          </div>
+        </div>
+        <div id="localHistoryActionsBar" class="local-history-actions hidden"></div>
+        <div id="localHistoryList" class="local-history-list"></div>
+      </section>
     </section>
 
     <!-- ==================== 2. HOJAS POR COMPAÑÍA ==================== -->
@@ -389,6 +409,7 @@
             <select id="sheetStatusFilter" aria-label="Estado" onchange="window.app.debouncedLoadSheet()">
               <option value="all">Todos los estados</option>
               <option value="pendiente">Pendiente</option>
+              <option value="iniciado">Iniciado</option>
               <option value="instalado">Instalado</option>
               <option value="portado">Portado</option>
               <option value="cancelado">Cancelado</option>
@@ -692,8 +713,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="/connection.js"></script>
-  <script src="/app.js"></script>
-  <script src="/workspace.js"></script>
+  <script src="/connection.js?v=20261113c"></script>
+  <script src="/app.js?v=20261113c"></script>
+  <script src="/workspace.js?v=20261113c"></script>
 </body>
 </html>

@@ -455,6 +455,7 @@ const bundleCode = `// =========================================================
 
       if (vista === "moviles") {
         companiesVisibles = companiesVisibles.filter((c) => c.es_movil_espejo && !c.ocultar_en_espejo_movil);
+        meta.companies = companiesVisibles;
       } else if (vista === "supervisor" && supParam) {
         const foundSup = meta.supervisors.find(
           (s) => s.token_acceso === supParam || s.nombre.toLowerCase() === supParam.toLowerCase()
@@ -713,7 +714,7 @@ const bundleCode = `// =========================================================
       const data = eng.getCompanySales(slug, {
         supervisor: urlObj.searchParams.get("supervisor") || "",
         limit: 50000,
-        vistaMovilEspejo: urlObj.searchParams.get("vista") === "moviles",
+        vistaMovilEspejo: urlObj.searchParams.get("vista") === "moviles" || role === "moviles",
       });
       const cols = data.company.columnas;
       const lines = [
