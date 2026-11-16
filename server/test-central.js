@@ -122,6 +122,34 @@ async function main() {
   assert(!JSON.stringify(movSummary.bloques || []).includes('A&A'), 'Resumen del día en Móviles no debe incluir A&A Sales');
   console.log('✓ Espejo Móviles oculta A&A Sales y mantiene Movistar/Claro/Entel Móvil');
 
+  // 6. Ventas Diarias: Móviles contadas por cantidad (titular + adicional)
+  db.prepare('INSERT INTO sales (company_slug, fecha, fecha_orden, mes, anio, ejecutivo, supervisor, nombre_cliente, estado, numero_principal, adicional, cant_titular, cant_adicional) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run('ventas-entel-movil', '16/11/2026', 20261116, 10, 2026, 'Ejecutiva Movil Test', 'Francisca', 'Cliente Con Adicional', 'Pendiente', '911111111', '922222222', 1, 1);
+  const dailyTest = await json('/api/summary/daily?fecha=2026-11-16', a);
+  const supFran = (dailyTest.bloques || []).find(b => b.supervisor === 'Francisca');
+  assert(supFran, 'Supervisor Francisca debe aparecer en resumen del día');
+  const campMov = supFran.campanias.find(c => c.slug === 'ventas-entel-movil');
+  assert(campMov, 'Campaña ventas-entel-movil debe aparecer');
+  assert.equal(campMov.esMovil, true, 'campMov.esMovil debe ser true');
+  assert(campMov.total >= 2, 'Campaña móvil debe contar titulares + adicionales (mínimo 2)');
+  const ejTest = campMov.listaEjecutivos.find(e => e.nombre === 'Ejecutiva Movil Test');
+  assert(ejTest, 'Ejecutiva Movil Test debe estar en la lista');
+  assert.equal(ejTest.cantidad, 2, 'Ejecutiva con 1 titular y 1 adicional debe sumar cantidad 2');
+  assert.equal(ejTest.titulares, 1, 'Debe registrar 1 titular');
+  assert.equal(ejTest.adicionales, 1, 'Debe registrar 1 adicional');
+  console.log('✓ Ventas diarias cuenta móviles por cantidad desglosando titulares y adicionales');
+
+  // 7. Pagos Adicionales: Fila de totales por supervisor
+  const payTest = await json('/api/payments?mes=10&anio=2026', a);
+  assert(payTest.tarjetasSupervisores.length > 0, 'Debe haber tarjetas de supervisores');
+  for (const s of payTest.tarjetasSupervisores) {
+    assert(s.totales, 'Cada tarjeta debe incluir objeto totales');
+    assert.equal(typeof s.totales.fib, 'number', 'totales.fib debe ser número');
+    assert.equal(typeof s.totales.paq, 'number', 'totales.paq debe ser número');
+    assert.equal(s.totales.dineroTotal, s.subtotalDinero, 'totales.dineroTotal debe ser igual a subtotalDinero');
+  }
+  console.log('✓ Pagos Adicionales incluye fila de totales con suma de instalaciones y montos');
+
   console.log('Todas las pruebas de la base central pasaron. Se usaron exclusivamente datos de prueba.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>{server.closeAllConnections();server.close();db.close();});

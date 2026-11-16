@@ -2820,8 +2820,19 @@ async function loadDailySummary(customFechaLatina = null) {
   const compTotals = {};
   data.bloques.forEach((b) => {
     b.campanias.forEach((c) => {
-      compTotals[c.titulo] = compTotals[c.titulo] || { titulo: c.titulo, color: c.color, total: 0 };
+      compTotals[c.titulo] = compTotals[c.titulo] || {
+        titulo: c.titulo,
+        color: c.color,
+        total: 0,
+        esMovil: Boolean(c.esMovil),
+        totalTit: 0,
+        totalAdi: 0,
+      };
       compTotals[c.titulo].total += c.total;
+      if (c.esMovil) {
+        compTotals[c.titulo].totalTit += c.totalTitulares || 0;
+        compTotals[c.titulo].totalAdi += c.totalAdicionales || 0;
+      }
     });
   });
 
@@ -2837,6 +2848,7 @@ async function loadDailySummary(customFechaLatina = null) {
               <span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:${esc(c.color)};"></span>
               <span>${esc(c.titulo)}:</span>
               <strong style="color:#0f172a;">${c.total}</strong>
+              ${c.esMovil ? `<span style="font-size:11px; color:#64748b;">(${c.totalTit} Tit · ${c.totalAdi} Adi)</span>` : ""}
             </div>
           `
           )
@@ -2886,18 +2898,25 @@ async function loadDailySummary(customFechaLatina = null) {
                     .map(
                       (ej, idx) => {
                         const medal = idx === 0 && ej.cantidad > 1 ? "🥇 " : idx === 1 && ej.cantidad > 1 ? "🥈 " : idx === 2 && ej.cantidad > 1 ? "🥉 " : "";
+                        const detalleMovil = c.esMovil
+                          ? `<span style="font-size:11.5px; color:#64748b; font-weight:500;">${ej.titulares} Tit · ${ej.adicionales} Adi</span>`
+                          : "";
                         return `
                           <div class="camp-exec-row" style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px dashed #f1f5f9; font-size:12.5px;">
                             <span>${medal}${esc(ej.nombre)}</span>
-                            <b style="background:#f1f5f9; padding:2px 7px; border-radius:10px; color:#0f172a;">${ej.cantidad}</b>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                              ${detalleMovil}
+                              <b style="background:#f1f5f9; padding:2px 7px; border-radius:10px; color:#0f172a;">${ej.cantidad}</b>
+                            </div>
                           </div>
                         `;
                       }
                     )
                     .join("")}
                 </div>
-                <div class="camp-daily-foot" style="background:#f8fafc; border-top:1px solid #e2e8f0; color:#334155; font-weight:700; padding:8px 12px; font-size:12px; text-align:right;">
-                  Subtotal: <b style="color:${esc(c.color)}; font-size:13px;">${c.total}</b>
+                <div class="camp-daily-foot" style="background:#f8fafc; border-top:1px solid #e2e8f0; color:#334155; font-weight:700; padding:8px 12px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+                  <span>${c.esMovil ? `<small style="font-weight:600; color:#64748b;">${c.totalTitulares || 0} Tit · ${c.totalAdicionales || 0} Adi</small>` : ""}</span>
+                  <span>Subtotal: <b style="color:${esc(c.color)}; font-size:13px;">${c.total}</b></span>
                 </div>
               </div>
             `
@@ -2977,6 +2996,29 @@ async function loadPayments() {
 
   grid.innerHTML = data.tarjetasSupervisores
     .map((sup) => {
+      const tot = sup.totales || {
+        paq: sup.ejecutivos.reduce((a, e) => a + (e.paq || 0), 0),
+        fib: sup.ejecutivos.reduce((a, e) => a + (e.fib || 0), 0),
+        claroVtr: sup.ejecutivos.reduce((a, e) => a + (e.claroVtr || 0), 0),
+        emTit: sup.ejecutivos.reduce((a, e) => a + (e.emTit || 0), 0),
+        emAdi: sup.ejecutivos.reduce((a, e) => a + (e.emAdi || 0), 0),
+        pyme: sup.ejecutivos.reduce((a, e) => a + (e.pyme || 0), 0),
+        pmTit: sup.ejecutivos.reduce((a, e) => a + (e.pmTit || 0), 0),
+        pmAdi: sup.ejecutivos.reduce((a, e) => a + (e.pmAdi || 0), 0),
+        aa: sup.ejecutivos.reduce((a, e) => a + (e.aa || 0), 0),
+        customCounts: {},
+        dineroPaq: sup.ejecutivos.reduce((a, e) => a + (e.dineroPaq || 0), 0),
+        dineroFib: sup.ejecutivos.reduce((a, e) => a + (e.dineroFib || 0), 0),
+        dineroClaro: sup.ejecutivos.reduce((a, e) => a + (e.dineroClaro || 0), 0),
+        dineroTotal: sup.subtotalDinero || sup.ejecutivos.reduce((a, e) => a + (e.dineroTotal || 0), 0),
+      };
+      if (!tot.customCounts && sup.customInitials) {
+        tot.customCounts = {};
+        for (const ini of sup.customInitials) {
+          tot.customCounts[ini] = sup.ejecutivos.reduce((a, e) => a + ((e.customCounts && e.customCounts[ini]) || 0), 0);
+        }
+      }
+
       return `
         <div class="pay-sup-card">
           <div class="pay-sup-head">
@@ -3025,6 +3067,23 @@ async function loadPayments() {
           )
           .join("")}
               </tbody>
+              <tfoot>
+                <tr class="pay-total-row">
+                  <td><b>Totales</b></td>
+                  <td><b>${tot.paq}</b></td>
+                  <td><b>${tot.fib}</b></td>
+                  ${sup.mostrarClaro ? `<td><b>${tot.claroVtr}</b></td>` : ""}
+                  ${sup.mostrarMovil ? `<td><b>${tot.emTit}</b></td><td><b>${tot.emAdi}</b></td>` : ""}
+                  ${sup.mostrarPyme ? `<td><b>${tot.pyme}</b></td>` : ""}
+                  ${sup.mostrarPymeMovil ? `<td><b>${tot.pmTit}</b></td><td><b>${tot.pmAdi}</b></td>` : ""}
+                  ${sup.mostrarAA ? `<td><b>${tot.aa}</b></td>` : ""}
+                  ${sup.customInitials.map((ini) => `<td><b>${(tot.customCounts && tot.customCounts[ini]) || 0}</b></td>`).join("")}
+                  <td class="pay-money" style="font-weight:700;">${fmtMoney(tot.dineroPaq)}</td>
+                  <td class="pay-money" style="font-weight:700;">${fmtMoney(tot.dineroFib)}</td>
+                  ${sup.mostrarClaro ? `<td class="pay-money" style="font-weight:700;">${fmtMoney(tot.dineroClaro)}</td>` : ""}
+                  <td class="pay-money" style="font-weight:700; color:#1e40af;">${fmtMoney(tot.dineroTotal)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>

@@ -1426,6 +1426,21 @@ tr.month-separator-row:hover td {
   color: #1d4ed8;
 }
 
+.pay-table tfoot td,
+.pay-table tr.pay-total-row td {
+  background: #f8fafc !important;
+  font-weight: 700;
+  color: #0f172a;
+  border-top: 2px solid #cbd5e1;
+  border-bottom: none;
+}
+
+.pay-table tfoot td.pay-money,
+.pay-table tr.pay-total-row td.pay-money {
+  color: #1e40af;
+  font-weight: 700;
+}
+
 /* ============================================================================
    5. SUPERVISORES Y LINKS + 6. INTEGRACIONES N8N / SHEETS
    ============================================================================ */

@@ -525,6 +525,19 @@ function isMobileMirrorCompany(company) {
 }
 
 /**
+ * Returns whether a company belongs to mobile services (Entel Móvil, Claro Móvil, Movistar Móvil, Pyme Móvil).
+ */
+function isMobileCompany(company) {
+  if (!company) return false;
+  return Boolean(
+    company.tipo_categoria === "movil" ||
+      company.tipo_categoria === "pymeMovil" ||
+      company.es_movil_espejo ||
+      (company.slug && company.slug.includes("movil"))
+  );
+}
+
+/**
  * Throws a 403 error if a company is not accessible from the Espejo Móviles view.
  */
 function assertMobileMirrorCompany(company) {
@@ -1189,13 +1202,21 @@ function formatDailySummaryTelegram(summary) {
   const compTotals = {};
   for (const b of summary.bloques) {
     for (const c of b.campanias) {
-      compTotals[c.titulo] = (compTotals[c.titulo] || 0) + c.total;
+      if (!compTotals[c.titulo]) {
+        compTotals[c.titulo] = { titulo: c.titulo, total: 0, esMovil: Boolean(c.esMovil), totalTit: 0, totalAdi: 0 };
+      }
+      compTotals[c.titulo].total += c.total;
+      if (c.esMovil) {
+        compTotals[c.titulo].totalTit += c.totalTitulares || 0;
+        compTotals[c.titulo].totalAdi += c.totalAdicionales || 0;
+      }
     }
   }
 
   lines.push(`🏢 *TOTALES POR COMPAÑÍA:*`);
-  for (const [titulo, cant] of Object.entries(compTotals).sort((a, b) => b[1] - a[1])) {
-    lines.push(`• ${titulo}: *${cant}*`);
+  for (const info of Object.values(compTotals).sort((a, b) => b.total - a.total)) {
+    const extra = info.esMovil ? ` _(${info.totalTit} Tit · ${info.totalAdi} Adi)_` : "";
+    lines.push(`• ${info.titulo}: *${info.total}*${extra}`);
   }
 
   lines.push(``, `👑 *TOTALES POR SUPERVISOR:*`);
@@ -1213,11 +1234,13 @@ function formatDailySummaryTelegram(summary) {
     lines.push(`────────────────────────────────────`);
 
     for (const c of b.campanias) {
-      lines.push(`  ${c.titulo} (${c.total})`);
+      const extraComp = c.esMovil ? ` (${c.totalTitulares || 0} Tit · ${c.totalAdicionales || 0} Adi)` : "";
+      lines.push(`  ${c.titulo} (${c.total}${extraComp})`);
       const list = c.listaEjecutivos || [];
       list.forEach((ej, idx) => {
         const medal = idx === 0 && ej.cantidad > 1 ? "🥇" : idx === 1 && ej.cantidad > 1 ? "🥈" : idx === 2 && ej.cantidad > 1 ? "🥉" : "🔹";
-        lines.push(`     ${medal} ${ej.cantidad} ➔ ${ej.nombre}`);
+        const extraEj = c.esMovil ? ` (${ej.titulares} Tit · ${ej.adicionales} Adi)` : "";
+        lines.push(`     ${medal} ${ej.cantidad}${extraEj} ➔ ${ej.nombre}`);
       });
       lines.push(``);
     }
@@ -1253,6 +1276,22 @@ function getDailySummary(fechaStr = null, options = {}) {
     const ejec = darFormatoNombre(r.ejecutivo || "Sin Nombre");
     const sup = resolveCanonicalSupervisor(r.supervisor, sups);
 
+    const isMovil = isMobileCompany(comp);
+    let cantTit = 1;
+    let cantAdi = 0;
+
+    if (isMovil) {
+      cantTit = Number(r.cant_titular || 0);
+      if (cantTit === 0 && r.numero_principal) cantTit = 1;
+      cantAdi = Number(r.cant_adicional || 0);
+      if (cantAdi === 0 && r.adicional) {
+        const nums = extraerTelefonosSeguro(r.adicional).filter((n) => n !== r.numero_principal);
+        cantAdi = nums.length;
+      }
+      if (cantTit === 0 && cantAdi === 0) cantTit = 1;
+    }
+    const cantTotal = isMovil ? cantTit + cantAdi : 1;
+
     if (!porSupervisor[sup]) {
       porSupervisor[sup] = { supervisor: sup, total: 0, campanias: {} };
     }
@@ -1262,16 +1301,32 @@ function getDailySummary(fechaStr = null, options = {}) {
         hoja: comp.hoja,
         titulo: `${comp.emoji} ${comp.hoja}`,
         color: comp.color,
+        esMovil: isMovil,
         total: 0,
+        totalTitulares: 0,
+        totalAdicionales: 0,
         ejecutivos: {},
       };
     }
 
-    porSupervisor[sup].campanias[comp.slug].ejecutivos[ejec] =
-      (porSupervisor[sup].campanias[comp.slug].ejecutivos[ejec] || 0) + 1;
-    porSupervisor[sup].campanias[comp.slug].total++;
-    porSupervisor[sup].total++;
-    granTotal++;
+    if (!porSupervisor[sup].campanias[comp.slug].ejecutivos[ejec]) {
+      porSupervisor[sup].campanias[comp.slug].ejecutivos[ejec] = {
+        cantidad: 0,
+        titulares: 0,
+        adicionales: 0,
+      };
+    }
+
+    const ejData = porSupervisor[sup].campanias[comp.slug].ejecutivos[ejec];
+    ejData.cantidad += cantTotal;
+    ejData.titulares += cantTit;
+    ejData.adicionales += cantAdi;
+
+    porSupervisor[sup].campanias[comp.slug].total += cantTotal;
+    porSupervisor[sup].campanias[comp.slug].totalTitulares += cantTit;
+    porSupervisor[sup].campanias[comp.slug].totalAdicionales += cantAdi;
+    porSupervisor[sup].total += cantTotal;
+    granTotal += cantTotal;
   }
 
   const bloques = Object.values(porSupervisor)
@@ -1282,7 +1337,12 @@ function getDailySummary(fechaStr = null, options = {}) {
       campanias: Object.values(b.campanias).map((c) => ({
         ...c,
         listaEjecutivos: Object.entries(c.ejecutivos)
-          .map(([nombre, cantidad]) => ({ nombre, cantidad }))
+          .map(([nombre, d]) => ({
+            nombre,
+            cantidad: d.cantidad,
+            titulares: d.titulares,
+            adicionales: d.adicionales,
+          }))
           .sort((a, b) => b.cantidad - a.cantidad || a.nombre.localeCompare(b.nombre)),
       })),
     }));
@@ -1536,6 +1596,30 @@ function getPaymentsReport(mesParam = null, anioParam = null, supervisorFilter =
         .sort();
       const ejecutivos = porSup[supName].sort((a, b) => a.nombre.localeCompare(b.nombre));
       const subtotalSup = ejecutivos.reduce((acc, e) => acc + e.dineroTotal, 0);
+
+      const totales = {
+        paq: ejecutivos.reduce((acc, e) => acc + (e.paq || 0), 0),
+        fib: ejecutivos.reduce((acc, e) => acc + (e.fib || 0), 0),
+        claroVtr: ejecutivos.reduce((acc, e) => acc + (e.claroVtr || 0), 0),
+        emTit: ejecutivos.reduce((acc, e) => acc + (e.emTit || 0), 0),
+        emAdi: ejecutivos.reduce((acc, e) => acc + (e.emAdi || 0), 0),
+        pyme: ejecutivos.reduce((acc, e) => acc + (e.pyme || 0), 0),
+        pmTit: ejecutivos.reduce((acc, e) => acc + (e.pmTit || 0), 0),
+        pmAdi: ejecutivos.reduce((acc, e) => acc + (e.pmAdi || 0), 0),
+        aa: ejecutivos.reduce((acc, e) => acc + (e.aa || 0), 0),
+        customCounts: {},
+        dineroPaq: ejecutivos.reduce((acc, e) => acc + (e.dineroPaq || 0), 0),
+        dineroFib: ejecutivos.reduce((acc, e) => acc + (e.dineroFib || 0), 0),
+        dineroClaro: ejecutivos.reduce((acc, e) => acc + (e.dineroClaro || 0), 0),
+        dineroTotal: subtotalSup,
+      };
+      for (const ini of customInitials) {
+        totales.customCounts[ini] = ejecutivos.reduce(
+          (acc, e) => acc + ((e.customCounts && e.customCounts[ini]) || 0),
+          0
+        );
+      }
+
       return {
         supervisor: supName,
         subtotalDinero: subtotalSup,
@@ -1546,6 +1630,7 @@ function getPaymentsReport(mesParam = null, anioParam = null, supervisorFilter =
         mostrarAA: camps.has("aa") && !camps.has("custom:A&A"),
         customInitials,
         ejecutivos,
+        totales,
       };
     });
 
@@ -2486,6 +2571,7 @@ module.exports = {
   COLS_MOVIL,
   slugify,
   isMobileMirrorCompany,
+  isMobileCompany,
   getAllCompanies,
   getAllSupervisors,
   resolveCanonicalSupervisor,
