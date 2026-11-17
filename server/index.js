@@ -12,6 +12,7 @@ const {
   db,
   UPLOADS_DIR,
   isMobileMirrorCompany,
+  getAllCompanies,
   submitFormSale,
   updateSaleFields,
   deleteSale,
@@ -40,6 +41,12 @@ const {
 const { parsearFichaCompleta } = require("./fichaParser");
 const { seedIfEmpty, importSheetsDictionary } = require("./seed");
 const { parseXlsxBuffer } = require("./xlsxReader");
+const {
+  buildSaleRowForSheets,
+  buildPaymentsSnapshot,
+  buildVisualSheetsBatchRequests,
+  notificarSheetsN8n,
+} = require("./sheetsSync");
 
 // La base central se carga únicamente mediante restauración o importación explícita.
 
@@ -65,7 +72,7 @@ function broadcastEvent(type, payload = {}) {
 const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || "https://bot-n8n.7lshe4.easypanel.host/webhook/web";
 
 function notificarN8n(sale, company, rawBody = {}) {
-  if (!N8N_WEBHOOK_URL) return;
+  if (!N8N_WEBHOOK_URL || process.env.FENIX_IS_TEST === "1") return;
   try {
     const compNombre = company ? (company.nombre || company.hoja) : (sale.company_slug || "");
     const tipoVenta = rawBody.tipo_venta || sale.servicio || (company ? company.hoja : "");
@@ -457,6 +464,7 @@ const server = http.createServer(async (req, res) => {
         sale: result.sale,
       });
       notificarN8n(result.sale, result.company, body);
+      notificarSheetsN8n("sale.created", { sale: result.sale, company: result.company });
       return sendJson(res, 201, result);
     }
 
@@ -516,6 +524,7 @@ const server = http.createServer(async (req, res) => {
           hoja: result.company.hoja,
           sale: result.sale,
         });
+        notificarSheetsN8n("sale.created", { sale: result.sale, company: result.company });
       }
       return sendJson(res, 200, result);
     }
@@ -548,9 +557,13 @@ const server = http.createServer(async (req, res) => {
       const id = Number(matchSaleId[1]);
       const patch = await readJsonBody(req);
       try {
+        const prevSale = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);
         // 'admin' y 'subadmin' pueden editar ventas existentes; 'moviles' solo notas/seguimiento; 'supervisor' bloqueado
         const updated = updateSaleFields(id, patch, role);
         broadcastEvent("sale_updated", { sale: updated });
+        if (updated) {
+          notificarSheetsN8n("sale.updated", { sale: updated, prevSale });
+        }
         return sendJson(res, 200, { ok: true, sale: updated });
       } catch (permErr) {
         if (permErr.statusCode === 403 || permErr.message.includes("Solo Lectura") || permErr.message.includes("Espejo Móviles")) {
@@ -568,8 +581,12 @@ const server = http.createServer(async (req, res) => {
         });
       }
       const id = Number(matchSaleId[1]);
+      const prevSale = db.prepare("SELECT * FROM sales WHERE id = ?").get(id);
       deleteSale(id, role);
       broadcastEvent("sale_deleted", { id });
+      if (prevSale) {
+        notificarSheetsN8n("sale.deleted", { sale: prevSale, prevSale });
+      }
       return sendJson(res, 200, { ok: true });
     }
 
@@ -581,8 +598,15 @@ const server = http.createServer(async (req, res) => {
         });
       }
       const body = await readJsonBody(req);
+      const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter(Boolean) : [];
+      const prevSales = ids.length > 0
+        ? db.prepare(`SELECT * FROM sales WHERE id IN (${ids.map(() => "?").join(",")})`).all(...ids)
+        : [];
       const resDel = bulkDeleteSales(body.ids || [], role);
       broadcastEvent("sale_deleted", { ids: body.ids || [], deleted: resDel.deleted });
+      for (const s of prevSales) {
+        notificarSheetsN8n("sale.deleted", { sale: s, prevSale: s });
+      }
       return sendJson(res, 200, { ok: true, ...resDel });
     }
 
@@ -617,6 +641,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       const tarifas = updatePaymentTarifas(body);
       broadcastEvent("config_updated", { kind: "tarifas" });
+      notificarSheetsN8n("payments.updated", { kind: "tarifas" });
       return sendJson(res, 200, { ok: true, tarifas });
     }
 
@@ -627,6 +652,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       updateExecutiveGoal(body.ejecutiva_norm, body.nombre, body.minimo_ventas);
       broadcastEvent("config_updated", { kind: "goals" });
+      notificarSheetsN8n("payments.updated", { kind: "goals" });
       return sendJson(res, 200, { ok: true });
     }
 
@@ -861,8 +887,32 @@ const server = http.createServer(async (req, res) => {
             hoja: result.company.hoja,
             sale: result.sale,
           });
+          notificarSheetsN8n("sale.created", { sale: result.sale, company: result.company });
         }
         return sendJson(res, 200, result);
+      }
+
+      if (method === "GET" && pathname === "/api/n8n/sheets-export") {
+        const slug = urlObj.searchParams.get("slug") || "";
+        if (slug) {
+          const comp = getAllCompanies().find((c) => c.slug === slug);
+          if (!comp) return sendJson(res, 404, { ok: false, message: "Hoja no encontrada." });
+          const sales = db
+            .prepare("SELECT * FROM sales WHERE company_slug = ? ORDER BY fecha_orden ASC, id ASC")
+            .all(slug);
+          return sendJson(res, 200, {
+            ok: true,
+            company: comp,
+            sales,
+            rows: sales.map((s) => buildSaleRowForSheets(s, comp)),
+          });
+        }
+        const visual = buildVisualSheetsBatchRequests({
+          fecha: urlObj.searchParams.get("fecha") || null,
+          mes: urlObj.searchParams.get("mes") ?? null,
+          anio: urlObj.searchParams.get("anio") ?? null,
+        });
+        return sendJson(res, 200, { ok: true, ...visual });
       }
     }
 
