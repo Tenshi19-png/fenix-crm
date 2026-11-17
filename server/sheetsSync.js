@@ -182,15 +182,30 @@ function buildPaymentsSnapshot(mes = null, anio = null) {
   };
 }
 
+function getFechaHoyChile() {
+  try {
+    const parts = new Intl.DateTimeFormat("es-CL", {
+      timeZone: "America/Santiago",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).formatToParts(new Date());
+    const d = parts.find((p) => p.type === "day")?.value || "01";
+    const m = parts.find((p) => p.type === "month")?.value || "01";
+    const y = parts.find((p) => p.type === "year")?.value || "2026";
+    return `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+  } catch {
+    const now = new Date();
+    return `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+  }
+}
+
 /**
  * Construye los requests de Google Sheets batchUpdate para dibujar
- * la pestaña visual "Ventas del dia" idéntica al Google Sheet original.
+ * la pestaña visual "Ventas del dia" mostrando exclusivamente las ventas del día de hoy.
  */
 function buildVisualDailyRequests(summaryInput = null, sheetId = VENTAS_DEL_DIA_SHEET_ID) {
-  let summary = summaryInput || getDailySummary(null);
-  if ((!summary.bloques || summary.bloques.length === 0) && Array.isArray(summary.ultimasFechas) && summary.ultimasFechas.length > 0) {
-    summary = getDailySummary(summary.ultimasFechas[0].fecha);
-  }
+  const summary = summaryInput || getDailySummary(getFechaHoyChile());
 
   const MAX_COLS = 22;
   const grid = [];
@@ -818,7 +833,8 @@ function buildVisualPaymentsRequests(reportInput = null, sheetId = PAGOS_ADICION
 }
 
 function buildVisualSheetsBatchRequests(opts = {}) {
-  const dailySummary = getDailySummary(opts.fecha || null);
+  const fechaHoy = opts.fecha || getFechaHoyChile();
+  const dailySummary = getDailySummary(fechaHoy);
   const paymentsSnap = buildPaymentsSnapshot(opts.mes ?? null, opts.anio ?? null);
   return {
     dailySummary,
@@ -857,8 +873,10 @@ function notificarSheetsN8n(eventType, data = {}) {
         ? buildSaleRowForSheets(sale, company)
         : null;
 
+    // Siempre mostrar exclusivamente las ventas del día de hoy en "Ventas del dia",
+    // sin importar la fecha que tenga la venta creada/editada/eliminada.
     const visual = buildVisualSheetsBatchRequests({
-      fecha: sale?.fecha || null,
+      fecha: getFechaHoyChile(),
     });
 
     const payload = {
