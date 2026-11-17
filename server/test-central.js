@@ -150,6 +150,12 @@ async function main() {
   }
   console.log('✓ Pagos Adicionales incluye fila de totales con suma de instalaciones y montos');
 
+  // 8. Exportación y sincronización visual para Google Sheets
+  const sheetsExp = await json('/api/n8n/sheets-export?visual=1&mes=10&anio=2026', { headers: { 'x-api-key': 'fenix_n8n_secret_token_2026' } });
+  assert(Array.isArray(sheetsExp.requests) && sheetsExp.requests.length > 0, 'Debe generar requests de batchUpdate para Google Sheets');
+  assert(!JSON.stringify(sheetsExp).includes('hoja_origen'), 'No debe incluir hoja_origen en sincronización de Sheets');
+  console.log('✓ Sincronización visual de Google Sheets (Ventas del dia + Pagos Adicionales) verificada');
+
   console.log('Todas las pruebas de la base central pasaron. Se usaron exclusivamente datos de prueba.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>{server.closeAllConnections();server.close();db.close();});

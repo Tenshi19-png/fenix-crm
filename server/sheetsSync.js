@@ -197,7 +197,7 @@ function buildVisualDailyRequests(summaryInput = null, sheetId = VENTAS_DEL_DIA_
   const ensureRow = (r) => {
     while (grid.length <= r) {
       const row = [];
-      for (let c = 0; c < MAX_COLS; c++) row.push(makeCell("", { bg: "#FFFFFF" }));
+      for (let c = 0; c < MAX_COLS; c++) row.push({});
       grid.push(row);
     }
   };
@@ -475,7 +475,7 @@ function buildVisualPaymentsRequests(reportInput = null, sheetId = PAGOS_ADICION
   const ensureRow = (r) => {
     while (grid.length <= r) {
       const row = [];
-      for (let c = 0; c < MAX_COLS; c++) row.push(makeCell("", { bg: "#FFFFFF" }));
+      for (let c = 0; c < MAX_COLS; c++) row.push({});
       grid.push(row);
     }
   };
