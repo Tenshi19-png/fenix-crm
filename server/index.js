@@ -1024,9 +1024,12 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(404); res.end('No encontrado'); return;
     }
     if (pathname.startsWith('/api/')) return sendJson(res, 404, { ok: false, message: 'Ruta no encontrada.' });
-    // 17. Archivos estáticos y SPA (/formulario, /ventas-fenix, /moviles)
+    // 17. Archivos estáticos y SPA (/formulario, /ventas-fenix, /moviles, /live)
     const spaRoutes = new Set(["/", "/formulario", "/ventas-fenix", "/admin-ventas", "/moviles"]);
-    let filePath = path.join(PUBLIC_DIR, spaRoutes.has(pathname) ? "index.html" : pathname);
+    let filePath =
+      pathname === "/live" || pathname === "/live/"
+        ? path.join(PUBLIC_DIR, "live", "index.html")
+        : path.join(PUBLIC_DIR, spaRoutes.has(pathname) ? "index.html" : pathname);
     if (!filePath.startsWith(PUBLIC_DIR + path.sep)) {
       res.writeHead(403);
       res.end("Acceso denegado");

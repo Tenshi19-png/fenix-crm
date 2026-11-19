@@ -1,0 +1,30 @@
+{
+  "name": "Fenix CRM Live View",
+  "short_name": "Fenix Live",
+  "description": "Monitor ejecutivo en tiempo real de Fenix CRM (solo lectura)",
+  "start_url": "/live/",
+  "scope": "/live/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "icons": [
+    {
+      "src": "/live/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/live/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/live/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

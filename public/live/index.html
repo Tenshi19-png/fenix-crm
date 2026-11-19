@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fenix Live">
+  <meta name="theme-color" content="#090d16">
+  <link rel="manifest" href="/live/manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="/live/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/live/icon-192.png">
+  <title>Fenix Live</title>
+  <style>
+    :root {
+      --bg-main: #090d16;
+      --bg-card: #131b2e;
+      --bg-card-hover: #1a243d;
+      --bg-subtle: #1c2742;
+      --border-color: #24324f;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent-blue: #3b82f6;
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-purple: #8b5cf6;
+      --accent-orange: #ff6600;
+      --radius: 14px;
+      --radius-sm: 8px;
+      --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    html {
+      background-color: var(--bg-main);
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      overflow-x: hidden;
+      padding-bottom: env(safe-area-inset-bottom, 24px);
+    }
+
+    /* Top Bar con soporte de Dynamic Island / Notch en iPhone */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(9, 13, 22, 0.92);
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border-color);
+      padding: calc(env(safe-area-inset-top, 12px) + 10px) 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      font-size: 24px;
+    }
+
+    .brand-text h1 {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #ffffff, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-text span {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-cyan);
+      letter-spacing: 0.3px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34d399;
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      background-color: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.8s infinite;
+    }
+
+    .live-badge.connecting {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.35);
+      color: #fbbf24;
+    }
+    .live-badge.connecting .pulse-dot {
+      background-color: #f59e0b;
+      box-shadow: 0 0 8px #f59e0b;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    .btn-refresh {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-refresh:active {
+      transform: scale(0.92);
+      color: #fff;
+      border-color: var(--accent-blue);
+    }
+
+    /* Banner discreto solo en Safari iOS antes de agregar a pantalla de inicio */
+    .ios-install-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(59, 130, 246, 0.14);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #dbeafe;
+      line-height: 1.35;
+    }
+    .ios-install-banner.visible { display: flex; }
+    .ios-install-close {
+      background: transparent;
+      border: none;
+      color: #93c5fd;
+      font-size: 16px;
+      padding: 2px 6px;
+      cursor: pointer;
+    }
+
+    /* Container */
+    main {
+      padding: 14px 16px;
+      max-width: 680px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Date bar */
+    .date-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+
+    .date-label {
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .date-select {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      outline: none;
+    }
+
+    /* Section Headings */
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+
+    .kpi-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--card-accent, #3b82f6), transparent);
+    }
+
+    .kpi-card.span-2 {
+      grid-column: span 2;
+    }
+
+    .kpi-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .kpi-value {
+      font-size: 32px;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1.1;
+      margin: 8px 0 4px;
+      font-feature-settings: "tnum";
+    }
+
+    .kpi-sub {
+      font-size: 11.5px;
+      color: var(--text-dim);
+    }
+
+    /* Progress bar */
+    .progress-track {
+      background: rgba(255, 255, 255, 0.08);
+      height: 7px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 10px 0 6px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #06b6d4);
+      border-radius: 4px;
+      transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Status Mini Grid */
+    .status-pills {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .status-pill {
+      background: var(--bg-subtle);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-sm);
+      padding: 8px;
+      text-align: center;
+    }
+
+    .status-pill.success { border-color: rgba(16, 185, 129, 0.3); }
+    .status-pill.warning { border-color: rgba(245, 158, 11, 0.3); }
+    .status-pill.danger  { border-color: rgba(239, 68, 68, 0.3); }
+
+    .status-pill .pill-val {
+      font-size: 18px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .status-pill.success .pill-val { color: #34d399; }
+    .status-pill.warning .pill-val { color: #fbbf24; }
+    .status-pill.danger  .pill-val { color: #f87171; }
+
+    .status-pill .pill-lbl {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-dim);
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+
+    /* Mobile Module Card */
+    .mobile-module-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 16px;
+      position: relative;
+    }
+
+    .mobile-module-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #f4511e, #ff6600);
+    }
+
+    .mobile-breakdown {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .mobile-stat-box {
+      background: var(--bg-subtle);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+    }
+
+    .mobile-stat-box.titular {
+      border-left: 3px solid #3b82f6;
+    }
+    .mobile-stat-box.adicional {
+      border-left: 3px solid #f59e0b;
+    }
+
+    .mobile-stat-box .box-lbl {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .mobile-stat-box .box-val {
+      font-size: 26px;
+      font-weight: 800;
+      margin: 4px 0 2px;
+      color: #fff;
+    }
+
+    .mobile-stat-box.titular .box-val { color: #60a5fa; }
+    .mobile-stat-box.adicional .box-val { color: #fcd34d; }
+
+    .mobile-stat-box .box-sub {
+      font-size: 10.5px;
+      color: var(--text-dim);
+    }
+
+    .mobile-dual-bar {
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      display: flex;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .dual-bar-tit {
+      background: #3b82f6;
+      height: 100%;
+      transition: width 0.5s ease;
+    }
+
+    .dual-bar-adi {
+      background: #f59e0b;
+      height: 100%;
+      transition: width 0.5s ease;
+    }
+
+    /* Supervisor & Team Cards */
+    .sup-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .sup-head {
+      padding: 14px 16px;
+      background: linear-gradient(90deg, rgba(30, 41, 59, 0.6), transparent);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .sup-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .sup-badge {
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .sup-body {
+      padding: 12px 16px;
+    }
+
+    .comp-block {
+      margin-bottom: 10px;
+    }
+
+    .comp-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .exec-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .exec-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-subtle);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12.5px;
+    }
+
+    .exec-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .exec-medal {
+      font-size: 14px;
+    }
+
+    .exec-counts {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+    }
+
+    .badge-movil-detail {
+      background: rgba(255, 255, 255, 0.08);
+      color: #94a3b8;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    /* Live Feed */
+    .feed-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .feed-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .feed-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .feed-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .feed-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .feed-sub {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .feed-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 3px;
+    }
+
+    .feed-status {
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+
+    .feed-status.instalado {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .feed-status.pendiente {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .feed-status.cancelado {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .feed-time {
+      font-size: 10.5px;
+      color: var(--text-dim);
+    }
+
+    /* Filter Input */
+    .filter-input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      color: #fff;
+      padding: 10px 14px;
+      font-size: 16px; /* evita zoom automático en iOS Safari */
+      outline: none;
+      margin-bottom: 10px;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    .filter-input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    .footer-note {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 16px 0 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header>
+    <div class="brand">
+      <span class="brand-icon">🔥</span>
+      <div class="brand-text">
+        <h1>Fenix CRM</h1>
+        <span>Live View · Jefatura</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div id="liveBadge" class="live-badge">
+        <span class="pulse-dot"></span>
+        <span id="liveStatusText">EN VIVO</span>
+      </div>
+      <button class="btn-refresh" id="btnRefresh" title="Actualizar">↻</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Aviso de instalación solo visible en Safari iPhone antes de agregar a inicio -->
+    <div id="iosInstallBanner" class="ios-install-banner">
+      <span>📲 <b>Instalar en iPhone:</b> toca <b>Compartir</b> (⬆️) y luego <b>"Agregar a pantalla de inicio"</b>.</span>
+      <button type="button" class="ios-install-close" id="iosInstallClose" aria-label="Cerrar">✕</button>
+    </div>
+
+    <!-- Date selector bar -->
+    <div class="date-bar">
+      <div class="date-label">
+        <span>📅</span>
+        <span id="dateDisplay">Ventas de Hoy</span>
+      </div>
+      <select id="dateSelect" class="date-select">
+        <option value="">Hoy</option>
+      </select>
+    </div>
+
+    <!-- Dashboard Principal: KPIs Grandes -->
+    <div class="section-title">📊 Resumen Ejecutivo del Día</div>
+    <div class="kpi-grid">
+      <div class="kpi-card" style="--card-accent: #3b82f6;">
+        <div class="kpi-head">
+          <span>TOTAL VENTAS</span>
+          <span>📈</span>
+        </div>
+        <div class="kpi-value" id="kpiTotalVentas">0</div>
+        <div class="kpi-sub" id="kpiRitmo">Ritmo diario de ventas</div>
+      </div>
+
+      <div class="kpi-card" style="--card-accent: #06b6d4;">
+        <div class="kpi-head">
+          <span>META &amp; AVANCE</span>
+          <span id="kpiAvancePct">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+        </div>
+        <div class="kpi-sub" id="kpiMetaSub">0 de 50 ventas objetivo</div>
+      </div>
+
+      <div class="kpi-card span-2" style="--card-accent: #10b981;">
+        <div class="kpi-head">
+          <span>ESTADO DE INSTALACIÓN / ACTIVACIÓN</span>
+          <span id="kpiConversionNet">Conv: 0.0%</span>
+        </div>
+        <div class="status-pills">
+          <div class="status-pill success">
+            <div class="pill-val" id="pillAprobadas">0</div>
+            <div class="pill-lbl">Aprobadas / Inst.</div>
+          </div>
+          <div class="status-pill warning">
+            <div class="pill-val" id="pillPendientes">0</div>
+            <div class="pill-lbl">Pendientes</div>
+          </div>
+          <div class="status-pill danger">
+            <div class="pill-val" id="pillRechazadas">0</div>
+            <div class="pill-lbl">Caídas / Cancel.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Módulo Móviles: Titulares vs Adicionales -->
+    <div class="section-title">📱 Desglose de Líneas Móviles</div>
+    <div class="mobile-module-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size:12.5px; font-weight:700; color:var(--text-muted);">TOTAL LÍNEAS MÓVILES</div>
+        <div style="font-size:18px; font-weight:800; color:#fff;" id="mobTotalLines">0</div>
+      </div>
+      <div class="mobile-breakdown">
+        <div class="mobile-stat-box titular">
+          <div class="box-lbl">🔹 Titulares</div>
+          <div class="box-val" id="mobTitulares">0</div>
+          <div class="box-sub">Nuevas / Portadas</div>
+        </div>
+        <div class="mobile-stat-box adicional">
+          <div class="box-lbl">🔸 Adicionales</div>
+          <div class="box-val" id="mobAdicionales">0</div>
+          <div class="box-sub">Líneas Extra Asociadas</div>
+        </div>
+      </div>
+      <div class="mobile-dual-bar">
+        <div class="dual-bar-tit" id="barTit" style="width: 50%;"></div>
+        <div class="dual-bar-adi" id="barAdi" style="width: 50%;"></div>
+      </div>
+    </div>
+
+    <!-- Rendimiento del Equipo -->
+    <div class="section-title">👥 Rendimiento del Equipo por Supervisor</div>
+    <input type="text" id="filterInput" class="filter-input" placeholder="🔍 Filtrar por supervisor o ejecutiva...">
+    <div id="supervisoresContainer">
+      <div style="text-align:center; padding:20px; color:var(--text-dim);">Cargando rendimiento del equipo...</div>
+    </div>
+
+    <!-- Feed en Vivo: Últimas Ventas -->
+    <div class="section-title">🔴 Feed en Vivo (Últimas Ventas)</div>
+    <div class="feed-card">
+      <div id="feedContainer">
+        <div style="text-align:center; padding:15px; color:var(--text-dim);">Conectando con el CRM en tiempo real...</div>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      Fenix CRM Live View · Monitoreo Ejecutivo de Solo Lectura<br>
+      Sincronizado en tiempo real con Base Central
+    </div>
+  </main>
+
+  <script>
+    const API_BASE = window.location.origin;
+    let state = {
+      data: null,
+      selectedDate: "",
+      filterText: ""
+    };
+
+    const elements = {
+      liveBadge: document.getElementById("liveBadge"),
+      liveStatusText: document.getElementById("liveStatusText"),
+      btnRefresh: document.getElementById("btnRefresh"),
+      dateDisplay: document.getElementById("dateDisplay"),
+      dateSelect: document.getElementById("dateSelect"),
+      filterInput: document.getElementById("filterInput"),
+      kpiTotalVentas: document.getElementById("kpiTotalVentas"),
+      kpiRitmo: document.getElementById("kpiRitmo"),
+      kpiAvancePct: document.getElementById("kpiAvancePct"),
+      progressFill: document.getElementById("progressFill"),
+      kpiMetaSub: document.getElementById("kpiMetaSub"),
+      kpiConversionNet: document.getElementById("kpiConversionNet"),
+      pillAprobadas: document.getElementById("pillAprobadas"),
+      pillPendientes: document.getElementById("pillPendientes"),
+      pillRechazadas: document.getElementById("pillRechazadas"),
+      mobTotalLines: document.getElementById("mobTotalLines"),
+      mobTitulares: document.getElementById("mobTitulares"),
+      mobAdicionales: document.getElementById("mobAdicionales"),
+      barTit: document.getElementById("barTit"),
+      barAdi: document.getElementById("barAdi"),
+      supervisoresContainer: document.getElementById("supervisoresContainer"),
+      feedContainer: document.getElementById("feedContainer"),
+      iosInstallBanner: document.getElementById("iosInstallBanner"),
+      iosInstallClose: document.getElementById("iosInstallClose")
+    };
+
+    // Mostrar tip de instalación solo en Safari de iPhone/iPad si aún no está instalada
+    (function checkIosInstallHint() {
+      const ua = navigator.userAgent || "";
+      const isIos = /iPhone|iPad|iPod/i.test(ua);
+      const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+      const dismissed = localStorage.getItem("fenix_ios_hint_dismissed") === "1";
+      if (isIos && !isStandalone && !dismissed && elements.iosInstallBanner) {
+        elements.iosInstallBanner.classList.add("visible");
+      }
+      if (elements.iosInstallClose) {
+        elements.iosInstallClose.addEventListener("click", () => {
+          elements.iosInstallBanner.classList.remove("visible");
+          localStorage.setItem("fenix_ios_hint_dismissed", "1");
+        });
+      }
+    })();
+
+    function esc(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function fetchOverview() {
+      try {
+        setLiveStatus("connecting", "ACTUALIZANDO");
+        const url = `${API_BASE}/api/live/overview${state.selectedDate ? '?fecha=' + encodeURIComponent(state.selectedDate) : ''}`;
+        const res = await fetch(url, { headers: { "Accept": "application/json" } });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const json = await res.json();
+        state.data = json;
+        localStorage.setItem("fenix_live_cache", JSON.stringify(json));
+        render(json);
+        setLiveStatus("online", "EN VIVO");
+      } catch (err) {
+        console.warn("Fallo al actualizar en vivo:", err);
+        setLiveStatus("connecting", "REINTENTANDO");
+      }
+    }
+
+    function setLiveStatus(status, text) {
+      if (status === "online") {
+        elements.liveBadge.className = "live-badge";
+        elements.liveStatusText.textContent = text || "EN VIVO";
+      } else {
+        elements.liveBadge.className = "live-badge connecting";
+        elements.liveStatusText.textContent = text || "CONECTANDO";
+      }
+    }
+
+    function render(data) {
+      if (!data) return;
+
+      const kpis = data.kpis || {};
+      const total = kpis.totalVentas || 0;
+      const meta = kpis.metaDiaria || 50;
+      const avance = kpis.avanceMeta || Math.min(100, Math.round((total / meta) * 100));
+
+      elements.kpiTotalVentas.textContent = total;
+      elements.kpiAvancePct.textContent = avance + "%";
+      elements.progressFill.style.width = Math.min(100, avance) + "%";
+      elements.kpiMetaSub.textContent = `${total} de ${meta} ventas objetivo`;
+      elements.dateDisplay.textContent = data.fecha ? `Ventas: ${data.fecha}` : "Ventas del Día";
+
+      elements.pillAprobadas.textContent = kpis.aprobadas || 0;
+      elements.pillPendientes.textContent = kpis.pendientes || 0;
+      elements.pillRechazadas.textContent = kpis.rechazadas || 0;
+      elements.kpiConversionNet.textContent = `Conv: ${kpis.tasaConversion || '0.0%'}`;
+
+      const mov = data.moviles || {};
+      const mobTot = mov.total || 0;
+      const mobTit = mov.titulares || 0;
+      const mobAdi = mov.adicionales || 0;
+      elements.mobTotalLines.textContent = mobTot;
+      elements.mobTitulares.textContent = mobTit;
+      elements.mobAdicionales.textContent = mobAdi;
+
+      const sumTitAdi = mobTit + mobAdi;
+      if (sumTitAdi > 0) {
+        const pTit = Math.round((mobTit / sumTitAdi) * 100);
+        elements.barTit.style.width = pTit + "%";
+        elements.barAdi.style.width = (100 - pTit) + "%";
+      } else {
+        elements.barTit.style.width = "50%";
+        elements.barAdi.style.width = "50%";
+      }
+
+      if (data.ultimasFechas && data.ultimasFechas.length > 0 && elements.dateSelect.options.length <= 1) {
+        elements.dateSelect.innerHTML = `<option value="">Hoy (${esc(data.fecha || '')})</option>` +
+          data.ultimasFechas.map(f => `<option value="${esc(f.fecha)}">${esc(f.fecha)} (${f.cantidad} vtas)</option>`).join("");
+        if (state.selectedDate) elements.dateSelect.value = state.selectedDate;
+      }
+
+      renderSupervisores(data.supervisores || []);
+      renderFeed(data.ultimasVentas || []);
+    }
+
+    function renderSupervisores(supervisores) {
+      const filter = state.filterText.trim().toLowerCase();
+      let filtered = supervisores;
+
+      if (filter) {
+        filtered = supervisores.filter(sup => {
+          if (sup.supervisor.toLowerCase().includes(filter)) return true;
+          for (const c of (sup.campanias || [])) {
+            for (const ej of (c.listaEjecutivos || [])) {
+              if (ej.nombre.toLowerCase().includes(filter)) return true;
+            }
+          }
+          return false;
+        });
+      }
+
+      if (filtered.length === 0) {
+        elements.supervisoresContainer.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-dim); background:var(--bg-card); border-radius:var(--radius);">Sin supervisores o ventas registradas para este filtro.</div>`;
+        return;
+      }
+
+      elements.supervisoresContainer.innerHTML = filtered.map(sup => {
+        const campaniasHtml = (sup.campanias || []).map(c => {
+          const extraComp = c.esMovil ? `<span class="badge-movil-detail">${c.totalTitulares || 0} Tit · ${c.totalAdicionales || 0} Adi</span>` : '';
+          const ejs = (c.listaEjecutivos || []);
+          return `
+            <div class="comp-block">
+              <div class="comp-title">
+                <span>${esc(c.titulo || c.hoja)}</span>
+                <span style="font-weight:700; color:#fff;">${c.total || 0} ${extraComp}</span>
+              </div>
+              <div class="exec-list">
+                ${ejs.map((ej, idx) => {
+                  const medal = idx === 0 && ej.cantidad > 1 ? '🥇' : idx === 1 && ej.cantidad > 1 ? '🥈' : idx === 2 && ej.cantidad > 1 ? '🥉' : '🔹';
+                  const extraEj = c.esMovil ? `<span class="badge-movil-detail">${ej.titulares || 0} Tit · ${ej.adicionales || 0} Adi</span>` : '';
+                  return `
+                    <div class="exec-row">
+                      <div class="exec-name">
+                        <span class="exec-medal">${medal}</span>
+                        <span>${esc(ej.nombre)}</span>
+                      </div>
+                      <div class="exec-counts">
+                        ${extraEj}
+                        <span>${ej.cantidad}</span>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <div class="sup-card">
+            <div class="sup-head">
+              <div class="sup-name">
+                <span>👤</span>
+                <span>${esc(sup.supervisor)}</span>
+              </div>
+              <div class="sup-badge">${sup.total} ventas</div>
+            </div>
+            <div class="sup-body">
+              ${campaniasHtml}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderFeed(ventas) {
+      if (!ventas || ventas.length === 0) {
+        elements.feedContainer.innerHTML = `<div style="text-align:center; padding:15px; color:var(--text-dim);">No hay registros recientes para mostrar.</div>`;
+        return;
+      }
+
+      elements.feedContainer.innerHTML = ventas.slice(0, 15).map(v => {
+        const estClass = (v.estado || '').toLowerCase().includes('instal') || (v.estado || '').toLowerCase().includes('port') ? 'instalado'
+          : (v.estado || '').toLowerCase().includes('cancel') || (v.estado || '').toLowerCase().includes('rechaz') ? 'cancelado' : 'pendiente';
+
+        const extraMovil = v.esMovil ? `<span class="badge-movil-detail" style="margin-left:4px;">${v.cant_titular || 1} Tit · ${v.cant_adicional || 0} Adi</span>` : '';
+
+        return `
+          <div class="feed-item">
+            <div class="feed-left">
+              <div class="feed-title">${esc(v.ejecutivo)} <span style="font-size:11px; color:var(--text-muted); font-weight:400;">(Sup. ${esc(v.supervisor)})</span></div>
+              <div class="feed-sub">
+                <span style="color:${esc(v.color || '#3b82f6')}; font-weight:700;">● ${esc(v.compania)}</span> · ${esc(v.servicio)} ${extraMovil}
+              </div>
+            </div>
+            <div class="feed-right">
+              <span class="feed-status ${estClass}">${esc(v.estado || 'Pendiente')}</span>
+              <span class="feed-time">${esc(v.hora || v.fecha || '')}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function setupRealtime() {
+      let eventSource = null;
+
+      function connectSSE() {
+        try {
+          if (eventSource) eventSource.close();
+          eventSource = new EventSource(`${API_BASE}/api/live/stream`);
+
+          eventSource.onopen = () => {
+            setLiveStatus("online", "EN VIVO");
+          };
+
+          eventSource.onmessage = (e) => {
+            try {
+              const msg = JSON.parse(e.data);
+              if (msg.type === "sale_created" || msg.type === "sale_updated" || msg.type === "sale_deleted" || msg.type === "config_updated") {
+                fetchOverview();
+              }
+            } catch (err) {}
+          };
+
+          eventSource.onerror = () => {
+            setLiveStatus("connecting", "RECONECTANDO");
+            eventSource.close();
+            setTimeout(connectSSE, 10000);
+          };
+        } catch (e) {
+          console.warn("SSE no disponible, usando polling:", e);
+        }
+      }
+
+      connectSSE();
+      setInterval(fetchOverview, 8000);
+      // Al volver a la app en iPhone tras suspenderla, refrescar al instante
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") fetchOverview();
+      });
+    }
+
+    elements.btnRefresh.addEventListener("click", () => {
+      elements.btnRefresh.style.transform = "rotate(360deg)";
+      setTimeout(() => elements.btnRefresh.style.transform = "none", 400);
+      fetchOverview();
+    });
+
+    elements.dateSelect.addEventListener("change", (e) => {
+      state.selectedDate = e.target.value;
+      fetchOverview();
+    });
+
+    elements.filterInput.addEventListener("input", (e) => {
+      state.filterText = e.target.value;
+      if (state.data) renderSupervisores(state.data.supervisores || []);
+    });
+
+    const cache = localStorage.getItem("fenix_live_cache");
+    if (cache) {
+      try { render(JSON.parse(cache)); } catch(e) {}
+    }
+    fetchOverview();
+    setupRealtime();
+  </script>
+</body>
+</html>
