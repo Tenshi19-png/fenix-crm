@@ -226,23 +226,28 @@ const MIME_TYPES = {
 
 const server = http.createServer(async (req, res) => {
   try {
+    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const pathname = decodeURIComponent(urlObj.pathname);
+    const method = req.method || "GET";
+
     const origin = req.headers.origin;
     const allowedOrigins = String(process.env.FENIX_ALLOWED_ORIGINS || '').split(',').map(s=>s.trim()).filter(Boolean);
+    const isCapacitorOrigin = ['https://localhost', 'http://localhost', 'capacitor://localhost'].includes(origin);
+    const isLiveReadOnlyPath = pathname.startsWith('/api/live/') || pathname === '/api/executive/live' || pathname === '/api/health';
     if (origin) {
       const ownOrigin = origin === `https://${req.headers.host}` || origin === `http://${req.headers.host}`;
-      if (!ownOrigin && !allowedOrigins.includes(origin)) return sendJson(res, 403, {ok:false,message:'Origen no autorizado.'});
+      const allowedLiveApp = isCapacitorOrigin && isLiveReadOnlyPath && (method === 'GET' || method === 'OPTIONS');
+      if (!ownOrigin && !allowedOrigins.includes(origin) && !allowedLiveApp) {
+        return sendJson(res, 403, {ok:false,message:'Origen no autorizado.'});
+      }
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
     }
-    if (req.method === "OPTIONS") {
+    if (method === "OPTIONS") {
       res.writeHead(204, CORS_HEADERS);
       res.end();
       return;
     }
-
-    const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    const pathname = decodeURIComponent(urlObj.pathname);
-    const method = req.method || "GET";
     let role = getRequestRole(req, urlObj);
     let reqEmail = getRequestEmail(req, urlObj);
     let reqSup = getRequestSup(req, urlObj);
