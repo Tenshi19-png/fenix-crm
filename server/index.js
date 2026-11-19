@@ -42,6 +42,7 @@ const {
 const { parsearFichaCompleta } = require("./fichaParser");
 const { seedIfEmpty, importSheetsDictionary } = require("./seed");
 const { parseXlsxBuffer } = require("./xlsxReader");
+const { buildXlsxBuffer } = require("./xlsxWriter");
 const {
   buildSaleRowForSheets,
   buildPaymentsSnapshot,
@@ -930,10 +931,11 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // 15. Exportación CSV / Excel de cualquier hoja
-    const matchExport = pathname.match(/^\/api\/export\/([a-z0-9\-]+)\.csv$/);
+    // 15. Exportación Excel (.xlsx), CSV (.csv), TSV (.tsv) y JSON (.json) de cualquier hoja
+    const matchExport = pathname.match(/^\/api\/export\/([a-z0-9\-]+)\.(xlsx|csv|tsv|json)$/);
     if (method === "GET" && matchExport) {
       const slug = matchExport[1];
+      const ext = matchExport[2];
       const data = getCompanySales(slug, {
         supervisor: urlObj.searchParams.get("supervisor") || "",
         exportAll: true,
@@ -944,6 +946,50 @@ const server = http.createServer(async (req, res) => {
         vistaMovilEspejo: urlObj.searchParams.get("vista") === "moviles" || role === "moviles",
       });
       const cols = data.company.columnas;
+
+      if (ext === "xlsx") {
+        const xlsxBuffer = buildXlsxBuffer(data.company.hoja || slug, cols, data.sales);
+        res.writeHead(200, {
+          ...CORS_HEADERS,
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="${slug}.xlsx"`,
+        });
+        res.end(xlsxBuffer);
+        return;
+      }
+
+      if (ext === "tsv") {
+        const toTsv = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
+        const lines = [
+          cols.map((c) => toTsv(c.label)).join("\t"),
+          ...data.sales.map((r) => cols.map((c) => toTsv(r[c.key])).join("\t")),
+        ];
+        const tsvBuffer = Buffer.from("\uFEFF" + lines.join("\r\n"), "utf8");
+        res.writeHead(200, {
+          ...CORS_HEADERS,
+          "Content-Type": "text/tab-separated-values; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${slug}.tsv"`,
+        });
+        res.end(tsvBuffer);
+        return;
+      }
+
+      if (ext === "json") {
+        const rowsJson = data.sales.map((r) => {
+          const obj = {};
+          for (const c of cols) obj[c.label] = r[c.key] ?? "";
+          return obj;
+        });
+        const jsonBuffer = Buffer.from(JSON.stringify({ hoja: data.company.hoja, total: rowsJson.length, ventas: rowsJson }, null, 2), "utf8");
+        res.writeHead(200, {
+          ...CORS_HEADERS,
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${slug}.json"`,
+        });
+        res.end(jsonBuffer);
+        return;
+      }
+
       const lines = [
         cols.map((c) => toCsvValue(c.label)).join(","),
         ...data.sales.map((r) => cols.map((c) => toCsvValue(r[c.key])).join(",")),

@@ -61,6 +61,15 @@ async function main() {
   assert.equal((await csv.text()).trim().split('\r\n').length,2051);
   const scopedCsv = await request('/api/export/movistar-con-tenencia.csv',v);
   assert.equal((await scopedCsv.text()).trim().split('\r\n').length,1601);
+  const xlsxResp = await request('/api/export/movistar-con-tenencia.xlsx',f);
+  assert.equal(xlsxResp.status, 200);
+  const xlsxBuf = Buffer.from(await xlsxResp.arrayBuffer());
+  assert.equal(xlsxBuf[0], 0x50);
+  assert.equal(xlsxBuf[1], 0x4b);
+  const tsvResp = await request('/api/export/movistar-con-tenencia.tsv',v);
+  assert.equal(tsvResp.status, 200);
+  const jsonExport = await json('/api/export/movistar-con-tenencia.json',v);
+  assert.equal(jsonExport.total, 1600);
   console.log('✓ Paginación completa, exportación, filtros y permisos');
   // Two connected clients receive deletion notices without personal sale fields.
   const stream = await fetch(base+'/api/events?session='+encodeURIComponent(supervisor));

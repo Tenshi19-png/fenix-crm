@@ -436,9 +436,25 @@
             <button class="btn btn-outline btn-sm" id="btnAddManualRow" onclick="window.app.addManualRow()">
               + Fila
             </button>
-            <button class="btn btn-outline btn-sm" onclick="window.app.exportActiveSheetCsv()">
-              Exportar CSV
-            </button>
+            <div class="export-dropdown" id="exportDropdown">
+              <button type="button" class="btn btn-outline btn-sm" id="btnExportMenu" onclick="window.app.toggleExportMenu(event)">
+                📥 Exportar ▾
+              </button>
+              <div class="export-menu hidden" id="exportMenu">
+                <button type="button" class="export-menu-item export-menu-primary" onclick="window.app.exportActiveSheet('xlsx')">
+                  📗 Excel (.xlsx) <span class="export-badge">Recomendado</span>
+                </button>
+                <button type="button" class="export-menu-item" onclick="window.app.exportActiveSheet('csv')">
+                  📄 CSV (.csv)
+                </button>
+                <button type="button" class="export-menu-item" onclick="window.app.exportActiveSheet('tsv')">
+                  📋 Tabulado (.tsv)
+                </button>
+                <button type="button" class="export-menu-item" onclick="window.app.exportActiveSheet('json')">
+                  🧩 JSON (.json)
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 

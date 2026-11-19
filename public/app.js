@@ -2788,25 +2788,48 @@ function openSaleDetail(id) {
   document.getElementById("modalSearch").classList.remove("hidden");
 }
 
-async function exportActiveSheetCsv() {
+function toggleExportMenu(event) {
+  if (event) event.stopPropagation();
+  const menu = document.getElementById("exportMenu");
+  if (!menu) return;
+  menu.classList.toggle("hidden");
+}
+
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("exportMenu");
+  const wrap = document.getElementById("exportDropdown");
+  if (menu && !menu.classList.contains("hidden") && wrap && !wrap.contains(e.target)) {
+    menu.classList.add("hidden");
+  }
+});
+
+async function exportActiveSheet(format = "xlsx") {
+  const menu = document.getElementById("exportMenu");
+  if (menu) menu.classList.add("hidden");
   if (!state.activeCompanySlug) return;
+  const ext = ["xlsx", "csv", "tsv", "json"].includes(format) ? format : "xlsx";
   const qs = new URLSearchParams();
   if (state.supervisorFiltro) qs.set("supervisor", state.supervisorFiltro);
   if (state.vista === "moviles") qs.set("vista", "moviles");
   try {
     for (const [key, id] of [['mes','sheetMonthFilter'],['anio','sheetYearFilter'],['estado','sheetStatusFilter'],['q','sheetSearchInput']]) qs.set(key, document.getElementById(id).value);
-    const resp = await fetch(apiUrl(`/api/export/${state.activeCompanySlug}.csv?${qs.toString()}`), { headers: requestHeaders() });
+    const resp = await fetch(apiUrl(`/api/export/${state.activeCompanySlug}.${ext}?${qs.toString()}`), { headers: requestHeaders() });
     if (!resp.ok) throw new Error('No se pudo exportar esta hoja.');
     const blob = await resp.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${state.activeCompanySlug}.csv`;
+    a.download = `${state.activeCompanySlug}.${ext}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast(`Exportado en formato .${ext.toUpperCase()}`);
   } catch (error) { toast(error.message); }
+}
+
+async function exportActiveSheetCsv() {
+  return exportActiveSheet("csv");
 }
 
 // ============================================================================
@@ -3784,6 +3807,8 @@ window.app = {
   toggleSelectAllRows,
   confirmBulkDeleteRows,
   openSaleDetail,
+  toggleExportMenu,
+  exportActiveSheet,
   exportActiveSheetCsv,
   setDailyToday,
   loadDailySummary,
