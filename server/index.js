@@ -253,7 +253,8 @@ const server = http.createServer(async (req, res) => {
       (method === 'POST' && ['/api/sales','/api/ficha/preview'].includes(pathname)));
     const hasN8nKey = checkN8nAuth(req, urlObj);
     const isIntegration = pathname.startsWith('/api/n8n/') || pathname === '/api/webhook/tally' || hasN8nKey;
-    if (pathname.startsWith('/api/') && !['/api/health','/api/auth/verify-email','/api/auth/logout'].includes(pathname) && !isPublicForm) {
+    const isLiveAppEndpoint = pathname.startsWith('/api/live/') || pathname === '/api/executive/live';
+    if (pathname.startsWith('/api/') && !['/api/health','/api/auth/verify-email','/api/auth/logout'].includes(pathname) && !isPublicForm && !isLiveAppEndpoint) {
       if (isIntegration) {
         if (!hasN8nKey) return sendJson(res, 403, { ok: false, message: 'Clave de integración requerida.' });
         role = 'admin';
