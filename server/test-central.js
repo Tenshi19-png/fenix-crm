@@ -117,6 +117,9 @@ async function main() {
   await json('/api/sales/' + emIns.lastInsertRowid, { ...m, method: 'PATCH', body: { notas_movil: 'Seguimiento ok', estado_pago: 'Pagado' } });
   const emCheckAdmin = await json('/api/companies/ventas-entel-movil/sales', a);
   assert(emCheckAdmin.company.columnas.some(c => c.key === 'estado_pago'), 'Admin debe ver columna estado_pago en hoja móvil');
+  assert(emCheckAdmin.company.columnas.some(c => c.key === 'notas_movil'), 'Admin debe ver columna notas_movil en hoja móvil');
+  assert(emCheckAdmin.company.columnas.some(c => c.key === 'seguimiento_movil'), 'Admin debe ver columna seguimiento_movil en hoja móvil');
+  assert.equal(emCheckAdmin.sales.find(s => s.id === Number(emIns.lastInsertRowid))?.notas_movil, 'Seguimiento ok', 'Admin debe ver las notas escritas desde Móviles');
   assert.equal(emCheckAdmin.sales.find(s => s.id === Number(emIns.lastInsertRowid))?.estado_pago, 'Pagado', 'Admin debe ver cambio a Pagado hecho desde Móviles');
   await json('/api/sales/' + emIns.lastInsertRowid, { ...f, method: 'PATCH', body: { estado_pago: 'No Pagado' } });
   const emCheckMov = await json('/api/companies/ventas-entel-movil/sales?vista=moviles', m);

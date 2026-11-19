@@ -1179,7 +1179,7 @@ function getCompanySales(companySlug, options = {}) {
       { key: "estado_pago", label: "💳 Pago", width: 128, type: "payment_status" },
     ];
   }
-  if (options.vistaMovilEspejo) {
+  if ((usaColumnaPago || options.vistaMovilEspejo) && !columnas.some((c) => c.key === "notas_movil")) {
     columnas = [
       ...columnas,
       { key: "notas_movil", label: "📝 Notas", width: 185 },
