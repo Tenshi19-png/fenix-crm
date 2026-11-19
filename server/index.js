@@ -19,6 +19,7 @@ const {
   bulkDeleteSales,
   getCompanySales,
   getDailySummary,
+  getExecutiveLiveOverview,
   getPaymentsReport,
   getPaymentSettings,
   getBotSession,
@@ -301,8 +302,8 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, status: "online", totalVentas, ts: new Date().toISOString() });
     }
 
-    // 1. SSE Real-Time Stream
-    if (method === "GET" && pathname === "/api/events") {
+    // 1. SSE Real-Time Stream (Web y App Android Live View)
+    if (method === "GET" && (pathname === "/api/events" || pathname === "/api/live/stream")) {
       res.writeHead(200, {
         ...CORS_HEADERS,
         "Content-Type": "text/event-stream",
@@ -314,6 +315,13 @@ const server = http.createServer(async (req, res) => {
       const heartbeat = setInterval(() => res.write(': keepalive\n\n'), 25000);
       req.on("close", () => { clearInterval(heartbeat); sseClients.delete(res); });
       return;
+    }
+
+    // 1b. Endpoint Ejecutivo Live View (Read-Only para Jefatura y App Android)
+    if (method === "GET" && (pathname === "/api/live/overview" || pathname === "/api/executive/live")) {
+      const fecha = urlObj.searchParams.get("fecha") || null;
+      const overview = getExecutiveLiveOverview(fecha);
+      return sendJson(res, 200, overview);
     }
 
     // 1b. Verificación de acceso por Correo Electrónico (estilo Google Sheets)

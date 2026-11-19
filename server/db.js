@@ -1184,12 +1184,36 @@ function getCompanySales(companySlug, options = {}) {
 // ============================================================================
 
 function formatDailySummaryTelegram(summary) {
+  const est = summary.resumenEstados || {};
+  const mov = summary.resumenMoviles || {};
+  const totIng = est.totalIngresadas ?? summary.granTotal ?? 0;
+  const aprob = est.aprobadasInstaladas ?? 0;
+  const pend = est.pendientes ?? 0;
+  const rech = est.rechazadasCaidas ?? 0;
+  const tasa = est.tasaConversion || (totIng > 0 ? ((aprob / totIng) * 100).toFixed(1) + "%" : "0.0%");
+
+  const movTot = mov.totalMoviles ?? 0;
+  const movTit = mov.totalTitulares ?? 0;
+  const movAdi = mov.totalAdicionales ?? 0;
+
   const lines = [
     `╔════════════════════════════════════╗`,
     `  🔥  *REPORTE DIARIO DE VENTAS*  🔥`,
     `  📅  *Fecha:* ${summary.fecha}`,
-    `  🌟  *Total General:* ${summary.granTotal} ventas`,
+    `  🌟  *Total Ingresadas:* ${totIng} ventas`,
     `╚════════════════════════════════════╝`,
+    ``,
+    `📊 *RESUMEN GENERAL DEL DÍA:*`,
+    `• 📥 Total Ingresadas: *${totIng}*`,
+    `• ✅ Aprobadas / Instaladas: *${aprob}*`,
+    `• ⏳ Pendientes / En Proceso: *${pend}*`,
+    `• ❌ Rechazadas / Caídas: *${rech}*`,
+    `• 📈 Tasa de Conversión: *${tasa}*`,
+    ``,
+    `📱 *DESGLOSE DE LÍNEAS MÓVILES:*`,
+    `• 🔹 Titulares: *${movTit}*`,
+    `• 🔸 Adicionales: *${movAdi}*`,
+    `• 📲 Total Móviles: *${movTot}*`,
     ``
   ];
 
@@ -1266,12 +1290,46 @@ function getDailySummary(fechaStr = null, options = {}) {
 
   const porSupervisor = {};
   let granTotal = 0;
+  let totalIngresadas = 0;
+  let aprobadasInstaladas = 0;
+  let pendientes = 0;
+  let rechazadasCaidas = 0;
+  let totalTitularesGlobal = 0;
+  let totalAdicionalesGlobal = 0;
+  let totalMovilesGlobal = 0;
 
   for (const r of rows) {
     const comp = companyMap.get(r.company_slug);
     if (!comp) continue;
     const fr = extraerFechaSegura(r.fecha);
     if (!fr || !fTarget || fr.dia !== fTarget.dia || fr.mes !== fTarget.mes || fr.anio !== fTarget.anio) continue;
+
+    totalIngresadas++;
+    const estLower = (r.estado || "").trim().toLowerCase();
+    if (
+      estLower.includes("instalad") ||
+      estLower.includes("portad") ||
+      estLower.includes("aprob") ||
+      estLower.includes("activo") ||
+      estLower.includes("conforme") ||
+      estLower.includes("exitosa") ||
+      estLower.includes("ok")
+    ) {
+      aprobadasInstaladas++;
+    } else if (
+      estLower.includes("cancel") ||
+      estLower.includes("no real") ||
+      estLower.includes("rechaz") ||
+      estLower.includes("caid") ||
+      estLower.includes("caíd") ||
+      estLower.includes("anul") ||
+      estLower.includes("cesad") ||
+      estLower.includes("baja")
+    ) {
+      rechazadasCaidas++;
+    } else {
+      pendientes++;
+    }
 
     const ejec = darFormatoNombre(r.ejecutivo || "Sin Nombre");
     const sup = resolveCanonicalSupervisor(r.supervisor, sups);
@@ -1289,6 +1347,9 @@ function getDailySummary(fechaStr = null, options = {}) {
         cantAdi = nums.length;
       }
       if (cantTit === 0 && cantAdi === 0) cantTit = 1;
+      totalTitularesGlobal += cantTit;
+      totalAdicionalesGlobal += cantAdi;
+      totalMovilesGlobal += (cantTit + cantAdi);
     }
     const cantTotal = isMovil ? cantTit + cantAdi : 1;
 
@@ -1353,14 +1414,104 @@ function getDailySummary(fechaStr = null, options = {}) {
     )
     .all();
 
+  const tasaConversion = totalIngresadas > 0
+    ? ((aprobadasInstaladas / totalIngresadas) * 100).toFixed(1) + "%"
+    : "0.0%";
+
+  const resumenEstados = {
+    totalIngresadas,
+    aprobadasInstaladas,
+    pendientes,
+    rechazadasCaidas,
+    tasaConversion,
+  };
+
+  const resumenMoviles = {
+    totalMoviles: totalMovilesGlobal,
+    totalTitulares: totalTitularesGlobal,
+    totalAdicionales: totalAdicionalesGlobal,
+  };
+
   const resObj = {
     fecha: fechaObjetivo,
     granTotal,
+    resumenEstados,
+    resumenMoviles,
     bloques,
     ultimasFechas,
   };
   resObj.texto_telegram = formatDailySummaryTelegram(resObj);
   return resObj;
+}
+
+function getExecutiveLiveOverview(fechaStr = null) {
+  const daily = getDailySummary(fechaStr);
+  const companies = getAllCompanies();
+  const companyMap = new Map(companies.map((c) => [c.slug, c]));
+
+  const metaDiaria = 50;
+  const granTotal = daily.granTotal || 0;
+  const avanceMeta = Math.min(100, Math.round((granTotal / (metaDiaria || 1)) * 100));
+
+  const ultimasRows = db
+    .prepare(
+      "SELECT id, company_slug, fecha, ejecutivo, supervisor, comuna, rut, nombre_cliente, telefono, cant_titular, cant_adicional, servicio, estado, created_at FROM sales ORDER BY id DESC LIMIT 25"
+    )
+    .all();
+
+  const ultimasVentas = ultimasRows.map((r) => {
+    const comp = companyMap.get(r.company_slug);
+    const isMovil = comp ? isMobileCompany(comp) : false;
+    let hora = "";
+    if (r.created_at) {
+      try {
+        const d = new Date(r.created_at.includes("T") ? r.created_at : r.created_at.replace(" ", "T") + "Z");
+        if (!isNaN(d.getTime())) {
+          hora = d.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", hour12: false });
+        }
+      } catch {}
+    }
+    if (!hora) hora = "Reciente";
+
+    return {
+      id: r.id,
+      hora,
+      fecha: r.fecha || "",
+      ejecutivo: darFormatoNombre(r.ejecutivo || "Sin Ejecutivo"),
+      supervisor: r.supervisor || "Sin Supervisor",
+      compania: comp ? comp.hoja : (r.company_slug || "General"),
+      color: comp ? comp.color : "#2563eb",
+      servicio: r.servicio || (comp ? comp.hoja : "Servicio"),
+      cliente: r.nombre_cliente || "Cliente",
+      estado: r.estado || "Pendiente",
+      esMovil: isMovil,
+      cant_titular: Number(r.cant_titular || 1),
+      cant_adicional: Number(r.cant_adicional || 0),
+    };
+  });
+
+  return {
+    ok: true,
+    timestamp: Date.now(),
+    fecha: daily.fecha,
+    kpis: {
+      totalVentas: granTotal,
+      metaDiaria,
+      avanceMeta,
+      aprobadas: daily.resumenEstados?.aprobadasInstaladas || 0,
+      pendientes: daily.resumenEstados?.pendientes || 0,
+      rechazadas: daily.resumenEstados?.rechazadasCaidas || 0,
+      tasaConversion: daily.resumenEstados?.tasaConversion || "0.0%",
+    },
+    moviles: {
+      total: daily.resumenMoviles?.totalMoviles || 0,
+      titulares: daily.resumenMoviles?.totalTitulares || 0,
+      adicionales: daily.resumenMoviles?.totalAdicionales || 0,
+    },
+    supervisores: daily.bloques || [],
+    ultimasFechas: daily.ultimasFechas || [],
+    ultimasVentas,
+  };
 }
 
 // ============================================================================
@@ -2585,6 +2736,7 @@ module.exports = {
   bulkDeleteSales,
   getCompanySales,
   getDailySummary,
+  getExecutiveLiveOverview,
   getPaymentsReport,
   getPaymentSettings,
   getBotSession,
