@@ -3,6 +3,7 @@
 // ============================================================================
 const {
   db,
+  isMobileCompany,
   getAllCompanies,
   getDailySummary,
   getPaymentsReport,
@@ -134,12 +135,25 @@ function solidBorder(hex = "#E0E0E0", style = "SOLID") {
   return { style, color: hexToRgb(hex) };
 }
 
+function getSheetColumnsForCompany(company) {
+  if (!company || !Array.isArray(company.columnas)) return [];
+  const base = company.columnas.filter((c) => c && c.key && c.label && c.key !== "hoja_origen");
+  const usaPago =
+    isMobileCompany(company) ||
+    Boolean(company.usa_portado) ||
+    company.slug === "aa-sales" ||
+    company.tipo_categoria === "aa";
+  if (usaPago && !base.some((c) => c.key === "estado_pago")) {
+    return [...base, { key: "estado_pago", label: "Estado de Pago", type: "payment_status" }];
+  }
+  return base;
+}
+
 function buildSaleRowForSheets(sale, company) {
   if (!sale || !company || !Array.isArray(company.columnas)) return {};
   const row = {};
-  for (const col of company.columnas) {
-    if (!col || !col.key || !col.label || col.key === "hoja_origen") continue;
-    const rawVal = sale[col.key];
+  for (const col of getSheetColumnsForCompany(company)) {
+    const rawVal = col.key === "estado_pago" ? (sale.estado_pago === "Pagado" ? "Pagado" : "No Pagado") : sale[col.key];
     row[col.label] = rawVal === null || rawVal === undefined ? "" : String(rawVal);
   }
   return row;
@@ -890,8 +904,7 @@ function notificarSheetsN8n(eventType, data = {}) {
             nombre: company.nombre,
             hoja: company.hoja,
             sheetId: COMPANY_SHEET_IDS[company.hoja] || null,
-            columnas: (company.columnas || [])
-              .filter((c) => c && c.key !== "hoja_origen")
+            columnas: getSheetColumnsForCompany(company)
               .map((c) => ({ key: c.key, label: c.label, type: c.type || "text" })),
           }
         : null,
