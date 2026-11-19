@@ -1168,7 +1168,12 @@ function getCompanySales(companySlug, options = {}) {
   const rows = db.prepare(`SELECT * FROM sales WHERE ${clause} ORDER BY ${sort} ${direction}, id ${direction} LIMIT ? OFFSET ?`).all(...args, pageSize, offset);
 
   let columnas = JSON.parse(company.columnas_json || "[]");
-  if (isMobileCompany(company) && !columnas.some((c) => c.key === "estado_pago")) {
+  const usaColumnaPago =
+    isMobileCompany(company) ||
+    Boolean(company.usa_portado) ||
+    company.slug === "aa-sales" ||
+    company.tipo_categoria === "aa";
+  if (usaColumnaPago && !columnas.some((c) => c.key === "estado_pago")) {
     columnas = [
       ...columnas,
       { key: "estado_pago", label: "💳 Pago", width: 128, type: "payment_status" },

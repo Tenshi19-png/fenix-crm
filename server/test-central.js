@@ -122,6 +122,11 @@ async function main() {
   const emCheckMov = await json('/api/companies/ventas-entel-movil/sales?vista=moviles', m);
   assert(emCheckMov.company.columnas.some(c => c.key === 'estado_pago'), 'Espejo Móviles debe ver columna estado_pago');
   assert.equal(emCheckMov.sales.find(s => s.id === Number(emIns.lastInsertRowid))?.estado_pago, 'No Pagado', 'Móviles debe ver cambio a No Pagado hecho desde Ventas Fenix');
+  const aaCheckAdmin = await json('/api/companies/aa-sales/sales', a);
+  assert(aaCheckAdmin.company.columnas.some(c => c.key === 'estado_pago'), 'Admin debe ver columna estado_pago en A&A Sales');
+  await json('/api/sales/' + aaIns.lastInsertRowid, { ...f, method: 'PATCH', body: { estado_pago: 'Pagado' } });
+  const aaCheckAdminAfter = await json('/api/companies/aa-sales/sales', a);
+  assert.equal(aaCheckAdminAfter.sales.find(s => s.id === Number(aaIns.lastInsertRowid))?.estado_pago, 'Pagado', 'Admin debe ver cambio a Pagado en A&A Sales hecho desde Ventas Fenix');
   const movSearch = await json('/api/search?q=Cliente&vista=moviles', m);
   assert(!movSearch.results.some(r => r.company_slug === 'aa-sales'), 'Búsqueda en Móviles no debe devolver A&A Sales');
   assert(movSearch.results.some(r => r.company_slug === 'ventas-entel-movil'), 'Búsqueda en Móviles debe devolver Entel Móvil');
