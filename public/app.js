@@ -2350,7 +2350,7 @@ function canEditColumnInCurrentView(colKey) {
   // Tanto Admin Principal como Segunda Hoja Admin (subadmin) pueden editar ventas existentes
   if (state.vista === "admin" || state.vista === "subadmin") return true;
   if (state.vista === "moviles") {
-    return colKey === "notas_movil" || colKey === "seguimiento_movil";
+    return colKey === "notas_movil" || colKey === "seguimiento_movil" || colKey === "estado_pago";
   }
   return false; // supervisor = solo lectura estricta
 }
@@ -2525,6 +2525,22 @@ function renderSheetTable(data) {
         } else {
           html += `<td><span class="status-readonly-pill">${esc(val)}</span></td>`;
         }
+      } else if (c.type === "payment_status") {
+        const pagoVal = val === "Pagado" ? "Pagado" : "No Pagado";
+        const pagoCls = pagoVal === "Pagado" ? "pago-pagado" : "pago-no-pagado";
+        const canEditPago = !state.isReadOnly && (state.vista === "admin" || state.vista === "subadmin" || state.vista === "moviles");
+        if (canEditPago) {
+          html += `
+            <td>
+              <select class="status-select pago-select ${pagoCls}" onchange="window.app.changeRowPaymentStatus(${row.id}, this.value, this)">
+                <option value="No Pagado" ${pagoVal === "No Pagado" ? "selected" : ""}>No Pagado</option>
+                <option value="Pagado" ${pagoVal === "Pagado" ? "selected" : ""}>Pagado</option>
+              </select>
+            </td>
+          `;
+        } else {
+          html += `<td><span class="status-readonly-pill ${pagoCls}">${esc(pagoVal)}</span></td>`;
+        }
       } else if (canEditColumnInCurrentView(c.key)) {
         const extraCls = state.vista === "moviles" ? " editable-highlight" : "";
         html += `
@@ -2590,6 +2606,28 @@ async function changeRowStatus(id, newStatus, selectEl) {
     toast("Error: " + err.message);
     updateHeaderBrand();
   loadActiveSheet();
+  }
+}
+
+async function changeRowPaymentStatus(id, newPaymentStatus, selectEl) {
+  if (state.isReadOnly || (state.vista !== "admin" && state.vista !== "subadmin" && state.vista !== "moviles")) return;
+  try {
+    const normalized = newPaymentStatus === "Pagado" ? "Pagado" : "No Pagado";
+    await api(`/api/sales/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ estado_pago: normalized }),
+    });
+    if (selectEl) {
+      selectEl.classList.remove("pago-pagado", "pago-no-pagado");
+      selectEl.classList.add(normalized === "Pagado" ? "pago-pagado" : "pago-no-pagado");
+    }
+    const sale = state.currentSheetSalesMap?.get(id) || (state.sales || []).find((s) => s.id === id);
+    if (sale) sale.estado_pago = normalized;
+    clearSheetCache();
+    toast(`Estado de pago actualizado a "${normalized}"`);
+  } catch (err) {
+    toast("Error: " + err.message);
+    loadActiveSheet();
   }
 }
 
@@ -3738,6 +3776,7 @@ window.app = {
   onPageSizeChange,
   toggleMonthGroup,
   changeRowStatus,
+  changeRowPaymentStatus,
   startInlineEdit,
   addManualRow,
   confirmDeleteRow,

@@ -199,6 +199,7 @@ function initSchema() {
       ficha_original TEXT NOT NULL DEFAULT '',
       notas_movil TEXT NOT NULL DEFAULT '',
       seguimiento_movil TEXT NOT NULL DEFAULT '',
+      estado_pago TEXT NOT NULL DEFAULT 'No Pagado',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (company_slug) REFERENCES companies(slug) ON DELETE CASCADE
@@ -216,6 +217,9 @@ function initSchema() {
   } catch {}
   try {
     db.exec("ALTER TABLE supervisors ADD COLUMN compania TEXT NOT NULL DEFAULT '';");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE sales ADD COLUMN estado_pago TEXT NOT NULL DEFAULT 'No Pagado';");
   } catch {}
 
   const insViewPerm = db.prepare(
@@ -809,6 +813,7 @@ function insertSaleRecord(company, data, skipDuplicateCheck = false) {
     ficha_original: String(data.ficha_original || "").trim(),
     notas_movil: String(data.notas_movil || "").trim(),
     seguimiento_movil: String(data.seguimiento_movil || "").trim(),
+    estado_pago: String(data.estado_pago || "").trim() === "Pagado" ? "Pagado" : "No Pagado",
   };
 
   if (!record.telefono && record.numero_principal) {
@@ -845,13 +850,13 @@ function insertSaleRecord(company, data, skipDuplicateCheck = false) {
       comuna, direccion, direccion_limpia, rut, nombre_cliente, telefono,
       numero_principal, adicional, cant_titular, cant_adicional, correo,
       servicio, estado, id_orden, fecha_instalacion, observacion,
-      subcompania, hizo_click, imagen_url, ficha_original, notas_movil, seguimiento_movil
+      subcompania, hizo_click, imagen_url, ficha_original, notas_movil, seguimiento_movil, estado_pago
     ) VALUES (
       ?, ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?
     )
   `);
 
@@ -884,7 +889,8 @@ function insertSaleRecord(company, data, skipDuplicateCheck = false) {
     record.imagen_url,
     record.ficha_original,
     record.notas_movil,
-    record.seguimiento_movil
+    record.seguimiento_movil,
+    record.estado_pago
   );
 
   if (record.ejecutivo) {
@@ -1005,10 +1011,11 @@ const ALLOWED_SALE_FIELDS = new Set([
   "subcompania",
   "notas_movil",
   "seguimiento_movil",
+  "estado_pago",
   "company_slug",
 ]);
 
-const MOBILE_MIRROR_EDITABLE_FIELDS = new Set(["notas_movil", "seguimiento_movil"]);
+const MOBILE_MIRROR_EDITABLE_FIELDS = new Set(["notas_movil", "seguimiento_movil", "estado_pago"]);
 
 function updateSaleFields(id, patch, roleOrOpts = "admin") {
   const role = typeof roleOrOpts === "object" && roleOrOpts !== null ? roleOrOpts.role || "admin" : roleOrOpts;
@@ -1031,11 +1038,15 @@ function updateSaleFields(id, patch, roleOrOpts = "admin") {
   for (const [k, v] of Object.entries(patch || {})) {
     if (!ALLOWED_SALE_FIELDS.has(k)) continue;
     if (role === "moviles" && !MOBILE_MIRROR_EDITABLE_FIELDS.has(k)) {
-      const err = new Error("En la vista Espejo Móviles solo se pueden editar Notas y Seguimiento.");
+      const err = new Error("En la vista Espejo Móviles solo se pueden editar Notas, Seguimiento y Estado de Pago.");
       err.statusCode = 403;
       throw err;
     }
-    updates[k] = v === null || v === undefined ? "" : v;
+    if (k === "estado_pago") {
+      updates[k] = String(v || "").trim() === "Pagado" ? "Pagado" : "No Pagado";
+    } else {
+      updates[k] = v === null || v === undefined ? "" : v;
+    }
   }
 
   if (updates.fecha !== undefined) {
@@ -1157,6 +1168,12 @@ function getCompanySales(companySlug, options = {}) {
   const rows = db.prepare(`SELECT * FROM sales WHERE ${clause} ORDER BY ${sort} ${direction}, id ${direction} LIMIT ? OFFSET ?`).all(...args, pageSize, offset);
 
   let columnas = JSON.parse(company.columnas_json || "[]");
+  if (isMobileCompany(company) && !columnas.some((c) => c.key === "estado_pago")) {
+    columnas = [
+      ...columnas,
+      { key: "estado_pago", label: "💳 Pago", width: 128, type: "payment_status" },
+    ];
+  }
   if (options.vistaMovilEspejo) {
     columnas = [
       ...columnas,

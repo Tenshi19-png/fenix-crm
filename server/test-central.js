@@ -114,7 +114,14 @@ async function main() {
   const emIns = db.prepare('INSERT INTO sales (company_slug, fecha, fecha_orden, mes, anio, ejecutivo, supervisor, nombre_cliente, estado) VALUES (?,?,?,?,?,?,?,?,?)')
     .run('ventas-entel-movil', '10/11/2026', 20261110, 10, 2026, 'Ejecutivo Prueba', 'Francisca', 'Cliente Entel Movil Visible', 'Pendiente');
   assert.equal((await request('/api/sales/' + aaIns.lastInsertRowid, { ...m, method: 'PATCH', body: { notas_movil: 'No permitido' } })).status, 403);
-  await json('/api/sales/' + emIns.lastInsertRowid, { ...m, method: 'PATCH', body: { notas_movil: 'Seguimiento ok' } });
+  await json('/api/sales/' + emIns.lastInsertRowid, { ...m, method: 'PATCH', body: { notas_movil: 'Seguimiento ok', estado_pago: 'Pagado' } });
+  const emCheckAdmin = await json('/api/companies/ventas-entel-movil/sales', a);
+  assert(emCheckAdmin.company.columnas.some(c => c.key === 'estado_pago'), 'Admin debe ver columna estado_pago en hoja móvil');
+  assert.equal(emCheckAdmin.sales.find(s => s.id === Number(emIns.lastInsertRowid))?.estado_pago, 'Pagado', 'Admin debe ver cambio a Pagado hecho desde Móviles');
+  await json('/api/sales/' + emIns.lastInsertRowid, { ...f, method: 'PATCH', body: { estado_pago: 'No Pagado' } });
+  const emCheckMov = await json('/api/companies/ventas-entel-movil/sales?vista=moviles', m);
+  assert(emCheckMov.company.columnas.some(c => c.key === 'estado_pago'), 'Espejo Móviles debe ver columna estado_pago');
+  assert.equal(emCheckMov.sales.find(s => s.id === Number(emIns.lastInsertRowid))?.estado_pago, 'No Pagado', 'Móviles debe ver cambio a No Pagado hecho desde Ventas Fenix');
   const movSearch = await json('/api/search?q=Cliente&vista=moviles', m);
   assert(!movSearch.results.some(r => r.company_slug === 'aa-sales'), 'Búsqueda en Móviles no debe devolver A&A Sales');
   assert(movSearch.results.some(r => r.company_slug === 'ventas-entel-movil'), 'Búsqueda en Móviles debe devolver Entel Móvil');

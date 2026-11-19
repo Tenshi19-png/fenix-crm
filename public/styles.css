@@ -2477,6 +2477,26 @@ tr.month-separator-row:hover td {
   align-items: center;
 }
 
+/* Estado de Pago en hojas móviles */
+.pago-select {
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.pago-pagado {
+  background-color: #dcfce7 !important;
+  color: #166534 !important;
+  border-color: #86efac !important;
+}
+
+.pago-no-pagado {
+  background-color: #fee2e2 !important;
+  color: #991b1b !important;
+  border-color: #fca5a5 !important;
+}
+
 
 
 
