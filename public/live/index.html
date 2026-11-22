@@ -889,11 +889,19 @@
         elements.barAdi.style.width = "50%";
       }
 
-      if (data.ultimasFechas && data.ultimasFechas.length > 0 && elements.dateSelect.options.length <= 1) {
-        elements.dateSelect.innerHTML = `<option value="">Hoy (${esc(data.fecha || '')})</option>` +
-          data.ultimasFechas.map(f => `<option value="${esc(f.fecha)}">${esc(f.fecha)} (${f.cantidad} vtas)</option>`).join("");
-        if (state.selectedDate) elements.dateSelect.value = state.selectedDate;
+      const hoyLabel = data.fechaHoy || (!state.selectedDate ? data.fecha : "") || "";
+      const ultimas = Array.isArray(data.ultimasFechas) ? data.ultimasFechas : [];
+      const selectSig = `${hoyLabel}|${ultimas.map(f => `${f.fecha}:${f.cantidad}`).join(",")}`;
+      if (elements.dateSelect.dataset.sig !== selectSig) {
+        elements.dateSelect.dataset.sig = selectSig;
+        elements.dateSelect.innerHTML =
+          `<option value="">Hoy${hoyLabel ? ` (${esc(hoyLabel)})` : ""}</option>` +
+          ultimas
+            .filter(f => f.fecha !== hoyLabel)
+            .map(f => `<option value="${esc(f.fecha)}">${esc(f.fecha)} (${f.cantidad} vtas)</option>`)
+            .join("");
       }
+      elements.dateSelect.value = state.selectedDate || "";
 
       renderSupervisores(data.supervisores || []);
       renderFeed(data.ultimasVentas || []);

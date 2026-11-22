@@ -1295,8 +1295,25 @@ function formatDailySummaryTelegram(summary) {
   return lines.join("\n");
 }
 
+function getFechaHoyChile() {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "America/Santiago",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).formatToParts(new Date());
+    const d = parts.find((p) => p.type === "day")?.value || "01";
+    const m = parts.find((p) => p.type === "month")?.value || "01";
+    const y = parts.find((p) => p.type === "year")?.value || "2026";
+    return `${d}/${m}/${y}`;
+  } catch {
+    return formatearFechaISOaLatina(new Date());
+  }
+}
+
 function getDailySummary(fechaStr = null, options = {}) {
-  const fechaObjetivo = fechaStr ? formatearFechaISOaLatina(fechaStr) : formatearFechaISOaLatina(new Date());
+  const fechaObjetivo = fechaStr ? formatearFechaISOaLatina(fechaStr) : getFechaHoyChile();
   const fTarget = extraerFechaSegura(fechaObjetivo);
 
   const companies = getAllCompanies().filter((c) => !options.onlyMobileMirror || isMobileMirrorCompany(c));
@@ -1516,6 +1533,7 @@ function getExecutiveLiveOverview(fechaStr = null) {
     ok: true,
     timestamp: Date.now(),
     fecha: daily.fecha,
+    fechaHoy: getFechaHoyChile(),
     kpis: {
       totalVentas: granTotal,
       metaDiaria,
@@ -1862,7 +1880,7 @@ function upsertBotSession(payload) {
 }
 
 function querySalesForN8n(params = {}) {
-  const hoyStr = formatearFechaISOaLatina(new Date());
+  const hoyStr = getFechaHoyChile();
   const desdeStr = params.desde ? formatearFechaISOaLatina(params.desde) : hoyStr;
   const hastaStr = params.hasta ? formatearFechaISOaLatina(params.hasta) : desdeStr;
 
