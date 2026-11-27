@@ -159,12 +159,12 @@
               <label class="field-label" id="brandVariantsLabel">Modalidad / Tipo de venta <span class="req">*</span></label>
               <div id="brandVariantsPills" class="choice-pills"></div>
 
-              <!-- Sub-condición exclusiva para Movistar Instalación sin Tenencia (Click Sí/No + Captura) -->
+              <!-- Sub-condición para Movistar Instalación Con/Sin Tenencia (Click Sí/No + Archivo PDF o Captura) -->
               <div id="condSinTenenciaClick" class="sub-conditional hidden">
-                <label class="field-label">¿La instalación sin tenencia fue completa por Click? <span class="req">*</span></label>
+                <label class="field-label">¿La instalación fue completa por Click? <span class="req">*</span></label>
                 <div class="choice-pills" id="clickChoices">
                   <button type="button" class="choice-pill" data-val="Sí" onclick="window.app.selectClickOption('Sí')">
-                    Sí (Adjuntar captura)
+                    Sí (Adjuntar PDF o captura)
                   </button>
                   <button type="button" class="choice-pill" data-val="No" onclick="window.app.selectClickOption('No')">
                     No
@@ -173,9 +173,10 @@
 
                 <div id="condClickImage" class="hidden" style="margin-top:10px;">
                   <div class="dropzone" id="imageDropzone" onclick="document.getElementById('clickImageInput').click()">
-                    <input type="file" id="clickImageInput" accept="image/*" class="hidden" onchange="window.app.handleImageFile(event)" />
-                    <div id="dropzonePrompt">Haz clic para subir imagen o presiona <b>Ctrl + V</b> para pegar captura</div>
+                    <input type="file" id="clickImageInput" accept="image/*,.pdf,application/pdf" class="hidden" onchange="window.app.handleImageFile(event)" />
+                    <div id="dropzonePrompt">Haz clic para subir <b>PDF o imagen</b>, o presiona <b>Ctrl + V</b> para pegar captura</div>
                     <img id="clickImagePreview" class="image-preview hidden" alt="Vista previa captura" />
+                    <div id="clickPdfPreview" class="hidden" style="margin-top:8px;padding:10px 14px;border-radius:8px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;font-weight:600;font-size:13px;"></div>
                   </div>
                 </div>
               </div>

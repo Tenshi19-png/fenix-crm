@@ -913,12 +913,20 @@ function submitFormSale(payload) {
   const parsed = parsearFichaCompleta(payload.ficha || "", payload.fecha || null);
 
   let imagenUrl = payload.imagen_url || "";
-  if (payload.imagen_base64 && String(payload.imagen_base64).startsWith("data:image/")) {
-    const m = String(payload.imagen_base64).match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
-    if (m) {
-      const ext = m[1] === "jpeg" ? "jpg" : m[1].replace(/[^a-z0-9]/gi, "");
+  if (payload.imagen_base64 && String(payload.imagen_base64).startsWith("data:")) {
+    const rawDataUri = String(payload.imagen_base64);
+    const mImg = rawDataUri.match(/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i);
+    const mPdf = rawDataUri.match(/^data:application\/pdf;base64,(.+)$/i);
+    if (mImg) {
+      const ext = mImg[1].toLowerCase() === "jpeg" ? "jpg" : mImg[1].toLowerCase();
+      const buf = Buffer.from(mImg[2], "base64");
       const fileName = `click_${Date.now()}_${crypto.randomBytes(3).toString("hex")}.${ext}`;
-      fs.writeFileSync(path.join(UPLOADS_DIR, fileName), Buffer.from(m[2], "base64"));
+      fs.writeFileSync(path.join(UPLOADS_DIR, fileName), buf);
+      imagenUrl = `/uploads/${fileName}`;
+    } else if (mPdf) {
+      const buf = Buffer.from(mPdf[1], "base64");
+      const fileName = `click_${Date.now()}_${crypto.randomBytes(3).toString("hex")}.pdf`;
+      fs.writeFileSync(path.join(UPLOADS_DIR, fileName), buf);
       imagenUrl = `/uploads/${fileName}`;
     }
   }
@@ -2463,7 +2471,7 @@ function buildBrandGroupsForForm(companies) {
           operador: "Movistar Fijo",
           tipo_venta: "Instalacion con tenencia",
           es_movil: false,
-          ask_click: false,
+          ask_click: true,
         },
         {
           id: "mov-sin-tenencia",

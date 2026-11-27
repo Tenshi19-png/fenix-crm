@@ -1023,14 +1023,43 @@ function handleImageFile(ev) {
   if (file) readImageFileToBase64(file);
 }
 
+function renderClickAttachmentPreview(dataUri, fileName = "") {
+  const img = document.getElementById("clickImagePreview");
+  const pdfBox = document.getElementById("clickPdfPreview");
+  const promptEl = document.getElementById("dropzonePrompt");
+  if (!dataUri) {
+    if (img) { img.src = ""; img.classList.add("hidden"); }
+    if (pdfBox) { pdfBox.textContent = ""; pdfBox.classList.add("hidden"); }
+    if (promptEl) promptEl.innerHTML = "Haz clic para subir <b>PDF o imagen</b>, o presiona <b>Ctrl + V</b> para pegar captura";
+    return;
+  }
+  const isPdf = String(dataUri).startsWith("data:application/pdf") || /\.pdf$/i.test(fileName);
+  if (isPdf) {
+    if (img) { img.src = ""; img.classList.add("hidden"); }
+    if (pdfBox) {
+      pdfBox.textContent = `📄 ${fileName || "Comprobante PDF"} · Archivo listo para enviar`;
+      pdfBox.classList.remove("hidden");
+    }
+    if (promptEl) promptEl.textContent = "PDF adjuntado correctamente (clic para cambiar)";
+  } else {
+    if (pdfBox) { pdfBox.textContent = ""; pdfBox.classList.add("hidden"); }
+    if (img) { img.src = dataUri; img.classList.remove("hidden"); }
+    if (promptEl) promptEl.textContent = `${fileName ? fileName + " · " : ""}Imagen adjuntada (clic para cambiar)`;
+  }
+}
+
 function readImageFileToBase64(file) {
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+  const isImg = /^image\/(png|jpe?g|webp|gif)$/i.test(file.type || "");
+  if (!isPdf && !isImg) {
+    toast("Formato no soportado. Adjunta un PDF o imagen (JPG, PNG, WEBP).");
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
     state.form.imagen_base64 = reader.result;
-    const img = document.getElementById("clickImagePreview");
-    img.src = reader.result;
-    img.classList.remove("hidden");
-    document.getElementById("dropzonePrompt").textContent = "Imagen adjuntada (clic para cambiar)";
+    state.form.imagen_nombre = file.name || (isPdf ? "comprobante.pdf" : "captura.jpg");
+    renderClickAttachmentPreview(reader.result, state.form.imagen_nombre);
     scheduleFormDraftSave();
   };
   reader.readAsDataURL(file);
@@ -1266,6 +1295,7 @@ async function handleFormSubmit(ev, forceDuplicate = false) {
     subcompania: state.form.subcompania,
     hizo_click: state.form.hizo_click,
     imagen_base64: state.form.imagen_base64,
+    imagen_nombre: state.form.imagen_nombre || "",
     supervisor,
     supervisor_otro: supervisorOtro,
     ejecutivo,
@@ -1350,11 +1380,12 @@ function forceSubmitDuplicate() {
 function clearSaleForm(keepFeedback = false) {
   document.getElementById("formFicha").value = "";
   state.form.imagen_base64 = "";
+  state.form.imagen_nombre = "";
   state.form.manualEdits = {};
   state.form.activePendingId = null;
-  document.getElementById("clickImagePreview").classList.add("hidden");
-  document.getElementById("dropzonePrompt").innerHTML =
-    "Haz clic para subir imagen o presiona <b>Ctrl + V</b> para pegar captura";
+  const fileInput = document.getElementById("clickImageInput");
+  if (fileInput) fileInput.value = "";
+  renderClickAttachmentPreview("", "");
 
   for (const k of [
     "ov_rut",
@@ -1695,16 +1726,7 @@ function applySavedValuesToForm({
     document.getElementById("formFicha").value = ficha || "";
 
     state.form.imagen_base64 = imagen_base64 || "";
-    const img = document.getElementById("clickImagePreview");
-    const promptEl = document.getElementById("dropzonePrompt");
-    if (imagen_base64 && img && promptEl) {
-      img.src = imagen_base64;
-      img.classList.remove("hidden");
-      promptEl.textContent = "Imagen restaurada (clic para cambiar)";
-    } else if (img && promptEl) {
-      img.classList.add("hidden");
-      promptEl.innerHTML = "Haz clic para subir imagen o presiona <b>Ctrl + V</b> para pegar captura";
-    }
+    renderClickAttachmentPreview(state.form.imagen_base64, state.form.imagen_nombre || "");
 
     state.form.manualEdits = { ...(manualEdits || {}) };
     state.form.activePendingId = activePendingId;
@@ -2775,7 +2797,9 @@ function openSaleDetail(id) {
       <div style="grid-column:span 2;"><b>Servicio / Plan:</b> ${esc(s.servicio)}</div>
     </div>
     ${s.imagen_url
-      ? `<div style="margin-bottom:14px;"><b>Captura adjunta:</b><br/><img src="${esc(s.imagen_url)}" style="max-width:100%; border-radius:8px; margin-top:6px; border:1px solid #e2e8f0;" /></div>`
+      ? (/\.pdf(\?|$)/i.test(s.imagen_url)
+          ? `<div style="margin-bottom:14px;"><b>Comprobante PDF adjunto:</b><div style="margin-top:8px;"><a href="${esc(s.imagen_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;">📄 Abrir / Descargar Comprobante PDF</a></div></div>`
+          : `<div style="margin-bottom:14px;"><b>Captura adjunta:</b><br/><img src="${esc(s.imagen_url)}" style="max-width:100%; border-radius:8px; margin-top:6px; border:1px solid #e2e8f0;" /></div>`)
       : ""
     }
     <div>

@@ -108,7 +108,19 @@ function notificarN8n(sale, company, rawBody = {}) {
           { label: "Ejecutivo", value: sale.ejecutivo || "" },
           { label: "Supervisor", value: sale.supervisor || "" },
           { label: "Hizo click", value: sale.hizo_click || rawBody.hizo_click || "" },
-          { label: "Imagen", value: imgUrl ? [{ url: imgUrl, name: "click.jpg" }] : [] },
+          {
+            label: "Imagen",
+            value: imgUrl
+              ? [
+                  {
+                    url: imgUrl,
+                    name:
+                      rawBody.imagen_nombre ||
+                      (imgUrl.toLowerCase().endsWith(".pdf") ? "comprobante.pdf" : "click.jpg"),
+                  },
+                ]
+              : [],
+          },
           { label: "Ficha", value: ficha }
         ]
       }
@@ -223,6 +235,7 @@ const MIME_TYPES = {
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
+  ".pdf": "application/pdf",
 };
 
 const server = http.createServer(async (req, res) => {
