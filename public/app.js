@@ -2486,16 +2486,18 @@ function renderSheetTable(data) {
   let ultimoMesClave = "";
 
   for (const [rowIndex, row] of visibleSales.entries()) {
-    const mesClave = `${row.anio}-${row.mes}`;
+    const dAnio = row.display_anio ?? row.anio;
+    const dMes = row.display_mes ?? row.mes;
+    const mesClave = `${dAnio}-${dMes}`;
     if (mesClave !== ultimoMesClave) {
       ultimoMesClave = mesClave;
       const collapsed = state.collapsedMonths.has(mesClave);
       const arrow = collapsed ? "▸" : "▾";
-      const nombreMes = NOMBRES_MESES[row.mes] || "MES";
+      const nombreMes = NOMBRES_MESES[dMes] || "MES";
       html += `
         <tr class="month-separator-row" onclick="window.app.toggleMonthGroup('${mesClave}')">
           <td colspan="${cols.length + 1}">
-            ${arrow} &nbsp;MES DE ${nombreMes} ${row.anio}
+            ${arrow} &nbsp;MES DE ${nombreMes} ${dAnio}
           </td>
         </tr>
       `;
@@ -2568,16 +2570,22 @@ function renderSheetTable(data) {
         }
       } else if (canEditColumnInCurrentView(c.key)) {
         const extraCls = state.vista === "moviles" ? " editable-highlight" : "";
+        const arrastreBadge = c.key === "fecha" && row.es_arrastre
+          ? ` <span class="arrastre-pill" title="Ingresada el ${esc(val)}, movida a este mes por fecha de instalación">↪ de ${esc(row.mes_origen_label || "")}</span>`
+          : "";
         html += `
           <td
-            tabindex="0" data-field="${c.key}" data-sale="${row.id}"
+            tabindex="0" data-field="${c.key}" data-sale="${row.id}" data-raw-value="${esc(val)}"
             class="editable-cell${extraCls}"
             title="Doble clic para editar: ${esc(val)}"
             ondblclick="window.app.startInlineEdit(this, ${row.id}, '${c.key}')"
-          >${esc(val)}</td>
+          >${esc(val)}${arrastreBadge}</td>
         `;
       } else {
-        html += `<td tabindex="0" data-field="${c.key}" data-sale="${row.id}" title="${esc(val)}">${esc(val)}</td>`;
+        const arrastreBadge = c.key === "fecha" && row.es_arrastre
+          ? ` <span class="arrastre-pill" title="Ingresada el ${esc(val)}, movida a este mes por fecha de instalación">↪ de ${esc(row.mes_origen_label || "")}</span>`
+          : "";
+        html += `<td tabindex="0" data-field="${c.key}" data-sale="${row.id}" data-raw-value="${esc(val)}" title="${esc(val)}">${esc(val)}${arrastreBadge}</td>`;
       }
     }
 
@@ -2660,7 +2668,7 @@ function startInlineEdit(td, saleId, fieldKey) {
   if (!canEditColumnInCurrentView(fieldKey)) return;
   if (td.querySelector("input") || state.editingCell) return;
   state.editingCell = true;
-  const oldVal = td.textContent;
+  const oldVal = td.dataset.rawValue !== undefined ? td.dataset.rawValue : td.textContent;
   const input = document.createElement("input");
   input.type = "text";
   input.className = "inline-editor";

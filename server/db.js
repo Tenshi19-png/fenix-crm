@@ -1146,6 +1146,98 @@ function bulkDeleteSales(ids = [], roleOrOpts = "admin") {
 // CONSULTA DE HOJA CON SEPARACIÓN POR MESES Y FILTRO DE SUPERVISOR / MÓVILES
 // ============================================================================
 
+const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const MESES_PATRONES = [
+  ["enero", 0], ["ene", 0],
+  ["febrero", 1], ["feb", 1],
+  ["marzo", 2], ["mar", 2],
+  ["abril", 3], ["abr", 3],
+  ["mayo", 4], ["may", 4],
+  ["junio", 5], ["jun", 5],
+  ["julio", 6], ["jul", 6],
+  ["agosto", 7], ["ago", 7],
+  ["septiembre", 8], ["setiembre", 8], ["sept", 8], ["sep", 8],
+  ["octubre", 9], ["oct", 9],
+  ["noviembre", 10], ["nov", 10],
+  ["diciembre", 11], ["dic", 11],
+];
+
+function extractInstallMonthYear(textRaw, saleAnio, saleMes) {
+  const txt = String(textRaw || "").trim();
+  if (!txt) return null;
+
+  // 1. Formato numérico completo (dd/mm/yyyy, yyyy-mm-dd, dd-mm-yy)
+  const full = extraerFechaSegura(txt);
+  if (full && Number.isInteger(full.mes) && Number.isInteger(full.anio)) {
+    return { mes: full.mes, anio: full.anio };
+  }
+
+  // 2. Formato corto dd/mm o dd-mm sin año (ej: "05/12", "7-12")
+  const mShort = txt.match(/\b(\d{1,2})[\/\-](\d{1,2})\b/);
+  if (mShort) {
+    const mes = Number(mShort[2]) - 1;
+    if (mes >= 0 && mes <= 11) {
+      const anio = mes < saleMes ? saleAnio + 1 : saleAnio;
+      return { mes, anio };
+    }
+  }
+
+  // 3. Texto con nombre de mes en español (ej: "7 de diciembre am", "03 dic 2026")
+  const norm = normalizarTexto(txt);
+  for (const [pat, mesIdx] of MESES_PATRONES) {
+    const re = new RegExp(`\\b${pat}\\b`, "i");
+    if (re.test(norm)) {
+      const yMatch = norm.match(/\b(20\d{2})\b/);
+      const anio = yMatch ? Number(yMatch[1]) : (mesIdx < saleMes ? saleAnio + 1 : saleAnio);
+      return { mes: mesIdx, anio };
+    }
+  }
+  return null;
+}
+
+function computeDisplayMonthForSale(row, hoyObj) {
+  const saleMes = Number(row.mes);
+  const saleAnio = Number(row.anio);
+  const base = {
+    ...row,
+    display_mes: saleMes,
+    display_anio: saleAnio,
+    es_arrastre: false,
+    mes_origen_label: "",
+  };
+
+  if (!hoyObj || !Number.isInteger(saleMes) || !Number.isInteger(saleAnio) || saleAnio <= 0) {
+    return base;
+  }
+
+  const estLow = normalizarTexto(row.estado || "");
+  if (!estLow.includes("pendi") && !estLow.includes("iniciad")) {
+    return base;
+  }
+
+  const instSource = row.fecha_instalacion || row.observacion || "";
+  const inst = extractInstallMonthYear(instSource, saleAnio, saleMes);
+  if (!inst) return base;
+
+  const saleYm = saleAnio * 12 + saleMes;
+  const instYm = inst.anio * 12 + inst.mes;
+  const hoyYm = hoyObj.anio * 12 + hoyObj.mes;
+
+  // Solo arrastrar al mes de instalación si:
+  // 1) Es un mes posterior al mes de ingreso, Y
+  // 2) Ya estamos en ese mes (o después) según la hora oficial de Chile.
+  if (instYm > saleYm && hoyYm >= instYm) {
+    return {
+      ...row,
+      display_mes: inst.mes,
+      display_anio: inst.anio,
+      es_arrastre: true,
+      mes_origen_label: MESES_CORTOS[saleMes] || "",
+    };
+  }
+  return base;
+}
+
 function getCompanySales(companySlug, options = {}) {
   const company = db.prepare("SELECT * FROM companies WHERE slug = ?").get(companySlug);
   if (!company) throw new Error("Compañía no encontrada.");
@@ -1159,11 +1251,6 @@ function getCompanySales(companySlug, options = {}) {
       .map(r => r.supervisor).filter(name => supervisorMatchesFilter(name, options.supervisor, sups));
     where.push(names.length ? `supervisor IN (${names.map(() => '?').join(',')})` : '0');
     args.push(...names);
-  }
-  for (const key of ['mes', 'anio']) {
-    if (options[key] !== undefined && options[key] !== '' && options[key] !== 'all') {
-      where.push(`${key} = ?`); args.push(Number(options[key]));
-    }
   }
   if (options.dia !== undefined && options.dia !== '' && options.dia !== 'all') {
     const diaNum = Number(options.dia);
@@ -1181,17 +1268,48 @@ function getCompanySales(companySlug, options = {}) {
     args.push(normalizarTexto(options.q));
   }
   const clause = where.join(' AND ');
-  const totalMatching = db.prepare(`SELECT COUNT(*) AS n FROM sales WHERE ${clause}`).get(...args).n;
+  const hoyObj = extraerFechaSegura(options.hoyOverride || getFechaHoyChile());
+  const rawRows = db.prepare(`SELECT * FROM sales WHERE ${clause}`).all(...args);
+
+  let enriched = rawRows.map((r) => computeDisplayMonthForSale(r, hoyObj));
+
+  if (options.mes !== undefined && options.mes !== '' && options.mes !== 'all') {
+    const targetMes = Number(options.mes);
+    enriched = enriched.filter((r) => r.display_mes === targetMes);
+  }
+  if (options.anio !== undefined && options.anio !== '' && options.anio !== 'all') {
+    const targetAnio = Number(options.anio);
+    enriched = enriched.filter((r) => r.display_anio === targetAnio);
+  }
+
+  const sortable = new Set(['fecha_orden','ejecutivo','supervisor','nombre_cliente','comuna','estado','rut','id']);
+  const sort = sortable.has(options.sort) ? options.sort : 'fecha_orden';
+  const dirMul = options.direction === 'asc' ? 1 : -1;
+
+  enriched.sort((a, b) => {
+    if (sort === 'fecha_orden') {
+      const ymA = (Number(a.display_anio) || 0) * 12 + (Number(a.display_mes) || 0);
+      const ymB = (Number(b.display_anio) || 0) * 12 + (Number(b.display_mes) || 0);
+      if (ymA !== ymB) return (ymA - ymB) * dirMul;
+      const foA = Number(a.fecha_orden) || 0;
+      const foB = Number(b.fecha_orden) || 0;
+      if (foA !== foB) return (foA - foB) * dirMul;
+      return (Number(a.id) - Number(b.id)) * dirMul;
+    }
+    if (sort === 'id') return (Number(a.id) - Number(b.id)) * dirMul;
+    const cmp = String(a[sort] || '').localeCompare(String(b[sort] || ''), 'es', { sensitivity: 'base' });
+    if (cmp !== 0) return cmp * dirMul;
+    return (Number(a.id) - Number(b.id)) * dirMul;
+  });
+
+  const totalMatching = enriched.length;
   const requestedSize = Number(options.pageSize || options.limit || 150);
   const pageSize = options.exportAll ? Math.max(1, totalMatching) : Math.max(1, Math.min(400, Number.isFinite(requestedSize) ? Math.floor(requestedSize) : 150));
   const totalPages = Math.max(1, Math.ceil(totalMatching / pageSize));
   const requestedPage = Number(options.page || 1);
   const page = Math.min(totalPages, Math.max(1, Number.isFinite(requestedPage) ? Math.floor(requestedPage) : 1));
   const offset = (page - 1) * pageSize;
-  const sortable = new Set(['fecha_orden','ejecutivo','supervisor','nombre_cliente','comuna','estado','rut','id']);
-  const sort = sortable.has(options.sort) ? options.sort : 'fecha_orden';
-  const direction = options.direction === 'asc' ? 'ASC' : 'DESC';
-  const rows = db.prepare(`SELECT * FROM sales WHERE ${clause} ORDER BY ${sort} ${direction}, id ${direction} LIMIT ? OFFSET ?`).all(...args, pageSize, offset);
+  const rows = enriched.slice(offset, offset + pageSize);
 
   let columnas = JSON.parse(company.columnas_json || "[]");
   const usaColumnaPago =
