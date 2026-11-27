@@ -2,6 +2,7 @@
 // FENIX CRM - SERVIDOR FULL-STACK + API EN TIEMPO REAL (SSE) + N8N / TELEGRAM
 // ============================================================================
 const http = require("node:http");
+const crypto = require("node:crypto");
 const auth = require("./auth");
 const { snapshot, backupBeforeChange, restoreSnapshot } = require("./backups");
 const fs = require("node:fs");
@@ -138,8 +139,14 @@ function notificarN8n(sale, company, rawBody = {}) {
   }
 }
 
-const CORS_HEADERS = {
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "SAMEORIGIN",
+  "Referrer-Policy": "no-referrer",
+};
 
+const CORS_HEADERS = {
+  ...SECURITY_HEADERS,
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, x-fenix-role, x-fenix-email, x-fenix-sup, x-fenix-admin-preview, x-api-key, Authorization",
@@ -207,16 +214,36 @@ function isRequestAdminPreview(req) {
 
 function checkN8nAuth(req, urlObj) {
   if (!N8N_API_KEY) return false;
-  const provided =
+  const provided = String(
     req.headers["x-api-key"] ||
     (req.headers.authorization || "").replace(/^Bearer\s+/i, "") ||
     urlObj.searchParams.get("api_key") ||
-    "";
-  return provided === N8N_API_KEY;
+    ""
+  );
+  const a = Buffer.from(provided, "utf8");
+  const b = Buffer.from(String(N8N_API_KEY), "utf8");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+const publicFormRate = new Map();
+function allowPublicFormRequest(req) {
+  const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+  const now = Date.now();
+  for (const [k, v] of publicFormRate) if (v.until < now) publicFormRate.delete(k);
+  const rec = publicFormRate.get(ip) || { count: 0, until: now + 60_000 };
+  if (rec.count >= 30) return false;
+  rec.count++;
+  publicFormRate.set(ip, rec);
+  return true;
+}
+
+function neutralizeFormulaCell(val) {
+  const s = String(val ?? "");
+  return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
 }
 
 function toCsvValue(val) {
-  const s = String(val ?? "");
+  const s = neutralizeFormulaCell(val);
   if (s.includes(",") || s.includes('"') || s.includes("\n")) {
     return `"${s.replace(/"/g, '""')}"`;
   }
@@ -271,12 +298,12 @@ const server = http.createServer(async (req, res) => {
       (method === 'GET' && pathname === '/api/bootstrap') ||
       (method === 'POST' && ['/api/sales','/api/ficha/preview'].includes(pathname)));
     const hasN8nKey = checkN8nAuth(req, urlObj);
-    const isIntegration = pathname.startsWith('/api/n8n/') || pathname === '/api/webhook/tally' || hasN8nKey;
+    const isIntegration = pathname.startsWith('/api/n8n/') || pathname === '/api/webhook/tally';
     const isLiveAppEndpoint = pathname.startsWith('/api/live/') || pathname === '/api/executive/live';
     if (pathname.startsWith('/api/') && !['/api/health','/api/auth/verify-email','/api/auth/logout'].includes(pathname) && !isPublicForm && !isLiveAppEndpoint) {
       if (isIntegration) {
         if (!hasN8nKey) return sendJson(res, 403, { ok: false, message: 'Clave de integración requerida.' });
-        role = 'admin';
+        role = 'integration';
       } else {
         if (session && pathname === '/api/events') { role = session.role; reqSup = session.sup; }
         if (!auth.canView(session, role, reqSup)) {
@@ -447,7 +474,10 @@ const server = http.createServer(async (req, res) => {
 
     // 4. Envío de nueva venta desde el Formulario Propio (o Fila Manual de Admin Principal)
     if (method === "POST" && pathname === "/api/sales") {
-      const body = await readJsonBody(req);
+      if (isPublicForm && !allowPublicFormRequest(req)) {
+        return sendJson(res, 429, { ok: false, message: "Demasiados envíos seguidos. Espera un momento e intenta nuevamente." });
+      }
+      const body = await readJsonBody(req, isPublicForm ? 12 * 1024 * 1024 : 60 * 1024 * 1024);
       const isManualEmptyRow =
         body.forzar_duplicada &&
         !body.ficha &&
@@ -972,7 +1002,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (ext === "tsv") {
-        const toTsv = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ");
+        const toTsv = (v) => neutralizeFormulaCell(v).replace(/[\t\r\n]+/g, " ");
         const lines = [
           cols.map((c) => toTsv(c.label)).join("\t"),
           ...data.sales.map((r) => cols.map((c) => toTsv(r[c.key])).join("\t")),
@@ -1023,7 +1053,19 @@ const server = http.createServer(async (req, res) => {
       const fullUpload = path.join(UPLOADS_DIR, safeName);
       if (fs.existsSync(fullUpload)) {
         const ext = path.extname(fullUpload).toLowerCase();
-        res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" });
+        const allowedUploadMime = {
+          ".pdf": "application/pdf",
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".webp": "image/webp",
+          ".gif": "image/gif",
+        };
+        res.writeHead(200, {
+          ...SECURITY_HEADERS,
+          "Content-Type": allowedUploadMime[ext] || "application/octet-stream",
+          "Content-Security-Policy": "default-src 'none'; sandbox",
+        });
         fs.createReadStream(fullUpload).pipe(res);
         return;
       }
@@ -1054,6 +1096,7 @@ const server = http.createServer(async (req, res) => {
 
     const ext = path.extname(filePath).toLowerCase();
     res.writeHead(200, {
+      ...SECURITY_HEADERS,
       "Content-Type": MIME_TYPES[ext] || "text/plain; charset=utf-8",
       "Cache-Control": "no-cache",
     });
@@ -1061,7 +1104,8 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     const status = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     if (status >= 500) console.error("❌ Error en petición:", err);
-    sendJson(res, status, { ok: false, message: err.message || "Error interno del servidor" });
+    const clientMsg = status >= 500 ? "Error interno del servidor." : (err.message || "Solicitud inválida.");
+    sendJson(res, status, { ok: false, message: clientMsg });
   }
 });
 

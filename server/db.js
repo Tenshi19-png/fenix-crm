@@ -915,19 +915,30 @@ function submitFormSale(payload) {
   let imagenUrl = payload.imagen_url || "";
   if (payload.imagen_base64 && String(payload.imagen_base64).startsWith("data:")) {
     const rawDataUri = String(payload.imagen_base64);
+    const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
     const mImg = rawDataUri.match(/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i);
     const mPdf = rawDataUri.match(/^data:application\/pdf;base64,(.+)$/i);
     if (mImg) {
       const ext = mImg[1].toLowerCase() === "jpeg" ? "jpg" : mImg[1].toLowerCase();
       const buf = Buffer.from(mImg[2], "base64");
-      const fileName = `click_${Date.now()}_${crypto.randomBytes(3).toString("hex")}.${ext}`;
-      fs.writeFileSync(path.join(UPLOADS_DIR, fileName), buf);
-      imagenUrl = `/uploads/${fileName}`;
+      const validMagic =
+        (ext === "png" && buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) ||
+        (ext === "jpg" && buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) ||
+        (ext === "gif" && buf.length >= 4 && buf.subarray(0, 3).toString("ascii") === "GIF") ||
+        (ext === "webp" && buf.length >= 12 && buf.subarray(0, 4).toString("ascii") === "RIFF" && buf.subarray(8, 12).toString("ascii") === "WEBP");
+      if (validMagic && buf.length <= MAX_UPLOAD_BYTES) {
+        const fileName = `click_${Date.now()}_${crypto.randomBytes(3).toString("hex")}.${ext}`;
+        fs.writeFileSync(path.join(UPLOADS_DIR, fileName), buf);
+        imagenUrl = `/uploads/${fileName}`;
+      }
     } else if (mPdf) {
       const buf = Buffer.from(mPdf[1], "base64");
-      const fileName = `click_${Date.now()}_${crypto.randomBytes(3).toString("hex")}.pdf`;
-      fs.writeFileSync(path.join(UPLOADS_DIR, fileName), buf);
-      imagenUrl = `/uploads/${fileName}`;
+      const isPdfMagic = buf.length >= 5 && buf.subarray(0, 5).toString("ascii") === "%PDF-";
+      if (isPdfMagic && buf.length <= MAX_UPLOAD_BYTES) {
+        const fileName = `click_${Date.now()}_${crypto.randomBytes(3).toString("hex")}.pdf`;
+        fs.writeFileSync(path.join(UPLOADS_DIR, fileName), buf);
+        imagenUrl = `/uploads/${fileName}`;
+      }
     }
   }
 

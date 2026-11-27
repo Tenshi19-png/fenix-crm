@@ -24,7 +24,8 @@ function permitted(role, sup, email) {
 }
 function login(req, body) {
   const email = normalize(body.email), role = body.vista, sup = String(body.sup || '');
-  const key = req.socket.remoteAddress + ':' + email;
+  const clientIp = String(req.headers?.['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const key = clientIp + ':' + email;
   const now = Date.now();
   for (const [k, v] of attempts) if (v.until < now) attempts.delete(k);
   const attempt = attempts.get(key) || { count: 0, until: now + 15 * 60_000 };
@@ -35,8 +36,11 @@ function login(req, body) {
     return { allowed: false, reason: 'Revisa el correo y los permisos de este acceso.' };
   }
 
-  // Si es admin y hay contraseña configurada en el servidor, se valida
+  // Si es admin, en producción exigir contraseña (fail-closed)
   if (role === 'admin') {
+    if (!process.env.FENIX_ADMIN_PASSWORD && process.env.NODE_ENV === 'production') {
+      return { allowed: false, reason: 'Clave de administrador no configurada en el servidor.' };
+    }
     if (process.env.FENIX_ADMIN_PASSWORD) {
       const valid = equals(digest(body.password, 'fenix-admin'), digest(process.env.FENIX_ADMIN_PASSWORD, 'fenix-admin'));
       if (!valid) return { allowed: false, reason: 'Clave de administrador incorrecta.' };
