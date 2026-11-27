@@ -18,7 +18,10 @@ function finishCellEdit() {
 }
 function clearSheetFilters() {
   document.getElementById('sheetSearchInput').value = '';
-  for (const id of ['sheetMonthFilter','sheetYearFilter','sheetStatusFilter']) document.getElementById(id).value = 'all';
+  for (const id of ['sheetDayFilter','sheetMonthFilter','sheetYearFilter','sheetStatusFilter']) {
+    const el = document.getElementById(id);
+    if (el) el.value = 'all';
+  }
   state.sheetPage = 1;
   loadActiveSheet();
 }

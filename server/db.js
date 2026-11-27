@@ -1165,6 +1165,13 @@ function getCompanySales(companySlug, options = {}) {
       where.push(`${key} = ?`); args.push(Number(options[key]));
     }
   }
+  if (options.dia !== undefined && options.dia !== '' && options.dia !== 'all') {
+    const diaNum = Number(options.dia);
+    if (Number.isInteger(diaNum) && diaNum >= 1 && diaNum <= 31) {
+      where.push('(fecha_orden % 100) = ?');
+      args.push(diaNum);
+    }
+  }
   if (options.estado && options.estado !== 'all') {
     where.push('fenix_norm(estado) = ?'); args.push(normalizarTexto(options.estado));
   }

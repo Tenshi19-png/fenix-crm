@@ -2400,6 +2400,8 @@ async function loadActiveSheetData() {
   qs.set('direction', state.sheetDirection || 'desc');
   if (state.supervisorFiltro) qs.set("supervisor", state.supervisorFiltro);
   if (state.vista === "moviles") qs.set("vista", "moviles");
+  const dayEl = document.getElementById("sheetDayFilter");
+  if (dayEl) qs.set("dia", dayEl.value);
   qs.set("mes", document.getElementById("sheetMonthFilter").value);
   qs.set("anio", document.getElementById("sheetYearFilter").value);
   qs.set("estado", document.getElementById("sheetStatusFilter").value);
@@ -2837,7 +2839,10 @@ async function exportActiveSheet(format = "xlsx") {
   if (state.supervisorFiltro) qs.set("supervisor", state.supervisorFiltro);
   if (state.vista === "moviles") qs.set("vista", "moviles");
   try {
-    for (const [key, id] of [['mes','sheetMonthFilter'],['anio','sheetYearFilter'],['estado','sheetStatusFilter'],['q','sheetSearchInput']]) qs.set(key, document.getElementById(id).value);
+    for (const [key, id] of [['dia','sheetDayFilter'],['mes','sheetMonthFilter'],['anio','sheetYearFilter'],['estado','sheetStatusFilter'],['q','sheetSearchInput']]) {
+      const el = document.getElementById(id);
+      if (el) qs.set(key, el.value);
+    }
     const resp = await fetch(apiUrl(`/api/export/${state.activeCompanySlug}.${ext}?${qs.toString()}`), { headers: requestHeaders() });
     if (!resp.ok) throw new Error('No se pudo exportar esta hoja.');
     const blob = await resp.blob();
